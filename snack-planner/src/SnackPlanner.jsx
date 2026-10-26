@@ -273,9 +273,15 @@ async function callClaude(prompt, { search = false } = {}) {
   const url = import.meta.env.VITE_SNACK_AI_URL;
   if (!url) throw new Error("AI features aren't configured (missing VITE_SNACK_AI_URL)");
 
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session) throw new Error("Not signed in");
+
   const res = await fetch(url, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${session.access_token}`,
+    },
     body: JSON.stringify({ prompt, search }),
   });
   if (!res.ok) throw new Error(`Request failed (${res.status})`);
@@ -565,7 +571,7 @@ const emptyWeek = (id) => ({
   manual: [],
 });
 
-export default function SnackPlanner() {
+function SnackPlannerApp({ onSignOut }) {
   const [tab, setTab] = useState("week");
   const [ready, setReady] = useState(false);
   const [storageOk, setStorageOk] = useState(true);
@@ -788,7 +794,10 @@ export default function SnackPlanner() {
               {tab === "library" && "Library"}
               {tab === "history" && "History"}
             </h1>
-            <span className="text-sm text-stone-500">{prettyWeek(week.id)}</span>
+            <span className="text-sm text-stone-500">
+              {prettyWeek(week.id)}
+              <button onClick={onSignOut} className="ml-3 text-xs text-stone-400 underline">Sign out</button>
+            </span>
           </div>
         </header>
 
@@ -1575,4 +1584,82 @@ function HistoryView({ weeks, exposures, library }) {
       </section>
     </div>
   );
+}
+
+/* ------------------------------------------------------------------- auth */
+
+function LoginForm() {
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState(null);
+
+  async function submit(e) {
+    e.preventDefault();
+    if (!supabase) return;
+    setBusy(true);
+    setError(null);
+    const { error } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
+    if (error) setError("That email and password didn't work.");
+    setBusy(false);
+  }
+
+  return (
+    <div className="min-h-screen flex items-center justify-center px-4" style={{ backgroundColor: "#f7f7f4" }}>
+      <form onSubmit={submit} className="w-full bg-white rounded-2xl border border-stone-200 p-6" style={{ maxWidth: 360 }}>
+        <div className="flex items-center gap-2 mb-5" style={{ color: "#3f6b46" }}>
+          <Carrot size={22} />
+          <h1 className="text-lg font-semibold text-stone-800">Snack Planner</h1>
+        </div>
+        {!supabaseConfigured && (
+          <p className="mb-3 text-xs" style={{ color: "#6b5a3a" }}>
+            Supabase isn't configured. Set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY.
+          </p>
+        )}
+        <input
+          type="email" autoComplete="email" required value={email}
+          onChange={(e) => setEmail(e.target.value)} placeholder="Email"
+          className="w-full px-3.5 py-3 rounded-lg bg-stone-50 text-sm outline-none mb-3"
+        />
+        <input
+          type="password" autoComplete="current-password" required value={password}
+          onChange={(e) => setPassword(e.target.value)} placeholder="Password"
+          className="w-full px-3.5 py-3 rounded-lg bg-stone-50 text-sm outline-none"
+        />
+        {error && (
+          <div className="mt-3 rounded-lg px-3 py-2 text-xs" style={{ backgroundColor: "#fbf0f1", color: "#6d4148" }}>
+            {error}
+          </div>
+        )}
+        <button
+          type="submit" disabled={busy || !supabaseConfigured}
+          className="w-full mt-4 py-3 rounded-lg text-white text-sm font-medium flex items-center justify-center gap-2"
+          style={{ backgroundColor: "#3f6b46", opacity: busy || !supabaseConfigured ? 0.6 : 1 }}
+        >
+          {busy ? <Loader2 size={15} className="animate-spin" /> : "Sign in"}
+        </button>
+      </form>
+    </div>
+  );
+}
+
+export default function SnackPlanner() {
+  const [session, setSession] = useState(undefined);
+
+  useEffect(() => {
+    if (!supabase) { setSession(null); return; }
+    supabase.auth.getSession().then(({ data }) => setSession(data.session));
+    const { data } = supabase.auth.onAuthStateChange((_event, s) => setSession(s));
+    return () => data.subscription.unsubscribe();
+  }, []);
+
+  if (session === undefined) {
+    return (
+      <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: "#f7f7f4" }}>
+        <Loader2 className="animate-spin text-stone-400" size={22} />
+      </div>
+    );
+  }
+  if (!session) return <LoginForm />;
+  return <SnackPlannerApp key={session.user.id} onSignOut={() => supabase.auth.signOut()} />;
 }

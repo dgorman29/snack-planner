@@ -116,8 +116,8 @@ supabase secrets set ALLOWED_ORIGIN=https://your-app.vercel.app
 
 ## Notes
 
-- **No login.** Anyone with the Vercel URL can read and write the data —
-  same tradeoff as the meal-journal app. Don't share the link publicly.
+- **Login required.** Sign-up is disabled; create accounts in the Supabase
+  dashboard under Authentication -> Users. All accounts share one set of data.
 - **Anthropic cost.** Each "Suggest snacks" / "More ideas" click and each
   recipe-URL import is one Claude API call, billed on your Anthropic
   console account, separate from any claude.ai subscription.

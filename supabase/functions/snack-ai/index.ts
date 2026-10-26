@@ -20,6 +20,21 @@ Deno.serve(async (req) => {
     return new Response("ok", { headers: corsHeaders });
   }
 
+  // Only signed-in users may spend Anthropic credit. The anon key alone fails
+  // this check because it carries no user.
+  const userRes = await fetch(`${Deno.env.get("SUPABASE_URL")}/auth/v1/user`, {
+    headers: {
+      Authorization: req.headers.get("Authorization") ?? "",
+      apikey: Deno.env.get("SUPABASE_ANON_KEY") ?? "",
+    },
+  });
+  if (!userRes.ok) {
+    return new Response(JSON.stringify({ error: "Not signed in" }), {
+      status: 401,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+
   if (!ANTHROPIC_API_KEY) {
     return new Response(JSON.stringify({ error: "ANTHROPIC_API_KEY is not configured" }), {
       status: 500,

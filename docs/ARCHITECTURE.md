@@ -11,7 +11,7 @@ Browser (GitHub Pages)
 |---|---|---|
 | Frontend | `snack-planner/` (Vite + React + Tailwind) | The whole app is `src/SnackPlanner.jsx` |
 | Database | Supabase project `oobnfidfqihesilvhoxv` | One table, `kv_store(key text pk, value jsonb, updated_at)` |
-| AI proxy | `supabase/functions/snack-ai/index.ts` | Holds `ANTHROPIC_API_KEY`, forwards prompts, returns the Anthropic response |
+| AI proxy | `supabase/functions/snack-ai/index.ts` | Checks the caller is a signed-in user (`/auth/v1/user`), holds `ANTHROPIC_API_KEY`, forwards prompts |
 | Hosting | GitHub Pages | Built and deployed by `.github/workflows/deploy.yml` on push to `main` |
 
 ## Storage model
@@ -20,7 +20,7 @@ Three keys, each a JSON blob in `kv_store` (originally `window.storage` in the C
 - `snackplan:week:v1`: the current week (suggestions, picks, prepped, ratings, list state)
 - `snackplan:pantry:v1`: ingredients always on hand
 
-Row-level security allows the `anon` role to select, insert and update. There is no auth.
+Row-level security allows only the `authenticated` role to select, insert and update (migration `0002_auth.sql`). Users sign in with Supabase Auth email/password; sign-ups are disabled in the dashboard and accounts are created by hand.
 
 ## PWA install
 - `snack-planner/public/manifest.webmanifest` plus `icon-192.png`, `icon-512.png`, `apple-touch-icon.png`, linked from `index.html` via `%BASE_URL%`. No service worker.
