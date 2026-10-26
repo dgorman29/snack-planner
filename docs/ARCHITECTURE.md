@@ -16,7 +16,7 @@ Browser (GitHub Pages)
 
 ## Storage model
 Three keys, each a JSON blob in `kv_store` (originally `window.storage` in the Claude Artifact version):
-- `snackplan:core:v1`: library, archived weeks, exposure counts
+- `snackplan:core:v1`: library, archived weeks, exposure counts. Library snacks may carry `tags: ["weekday-dinner"]`; snacks saved before tags existed simply have no `tags` field.
 - `snackplan:week:v1`: the current week (suggestions, picks, prepped, ratings, list state)
 - `snackplan:pantry:v1`: ingredients always on hand
 

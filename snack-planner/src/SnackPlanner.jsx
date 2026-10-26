@@ -72,6 +72,12 @@ const TIERS = {
 };
 const TIER_ORDER = ["grab", "assembly", "batch"];
 
+// Optional tags stored on a snack as `tags: [...]`. Older snacks have no `tags` field.
+const DINNER_TAG = "weekday-dinner";
+const TAG_LABEL = { [DINNER_TAG]: "Weekday dinner" };
+const TAG_TONE = "#4a76b8";
+const hasTag = (snack, tag) => (snack.tags || []).includes(tag);
+
 const SECTIONS = ["produce", "dairy", "pantry", "frozen", "other"];
 const SECTION_LABEL = {
   produce: "Produce", dairy: "Dairy", pantry: "Pantry", frozen: "Frozen", other: "Other",
@@ -358,6 +364,7 @@ function coerceSnack(raw) {
     ingredients: normalizeIngredients(raw.ingredients),
     steps: String(raw.steps || raw.method || "").trim(),
     url: raw.url || "",
+    tags: [],
     source: "generated",
     ratings: [],
     lastMadeWeek: null,
@@ -750,6 +757,32 @@ function SnackPlannerApp({ onSignOut }) {
     flash(`Saved ${snack.title}`);
   }
 
+  function toggleLibraryTag(id, tag) {
+    setLibrary((lib) => lib.map((s) => {
+      if (s.id !== id) return s;
+      const tags = s.tags || [];
+      return { ...s, tags: tags.includes(tag) ? tags.filter((t) => t !== tag) : [...tags, tag] };
+    }));
+  }
+
+  // Pin a specific library snack to this week, and show it on the Week tab even
+  // if it wasn't among the suggestions. Tapping again takes it back out.
+  function toggleInWeek(snack) {
+    const inWeek = week.selected.includes(snack.id);
+    setWeek((w) => {
+      if (inWeek) {
+        return { ...w, selected: w.selected.filter((x) => x !== snack.id), prepped: w.prepped.filter((x) => x !== snack.id) };
+      }
+      const shown = w.suggestions.some((s) => s.id === snack.id);
+      return {
+        ...w,
+        selected: [...w.selected, snack.id],
+        suggestions: shown ? w.suggestions : [{ ...snack, _reason: "Added from library" }, ...w.suggestions],
+      };
+    });
+    flash(inWeek ? `Removed ${snack.title} from this week` : `Added ${snack.title} to this week`);
+  }
+
   function removeFromLibrary(id) {
     setLibrary((lib) => lib.filter((s) => s.id !== id));
     setWeek((w) => ({
@@ -842,6 +875,7 @@ function SnackPlannerApp({ onSignOut }) {
         {tab === "library" && (
           <LibraryView
             library={library} onAdd={addToLibrary} onRemove={removeFromLibrary}
+            selectedIds={week.selected} onToggleInWeek={toggleInWeek} onToggleTag={toggleLibraryTag}
             busy={busy} setBusy={setBusy} flash={flash}
           />
         )}
@@ -888,7 +922,9 @@ function SnackPlannerApp({ onSignOut }) {
 
 function WeekView({ week, setWeek, pool, busy, onBuild, onToggleSelect, onTogglePrepped, selectedCount, onGoToList }) {
   const [tierFilter, setTierFilter] = useState([]);
-  const shown = pool.filter((s) => !tierFilter.length || tierFilter.includes(s.tier));
+  const [dinnerOnly, setDinnerOnly] = useState(false);
+  const shown = pool.filter((s) =>
+    (!tierFilter.length || tierFilter.includes(s.tier)) && (!dinnerOnly || hasTag(s, DINNER_TAG)));
 
   function toggleTier(t) {
     setTierFilter((f) => (f.includes(t) ? f.filter((x) => x !== t) : [...f, t]));
@@ -928,6 +964,9 @@ function WeekView({ week, setWeek, pool, busy, onBuild, onToggleSelect, onToggle
               {TIERS[t].label}
             </Pill>
           ))}
+          <Pill active={dinnerOnly} tone={TAG_TONE} onClick={() => setDinnerOnly((v) => !v)}>
+            {TAG_LABEL[DINNER_TAG]}
+          </Pill>
         </div>
       )}
 
@@ -1016,6 +1055,12 @@ function SnackCard({ snack, selected, prepped, onSelect, onPrepped }) {
                 {snack.tier === "grab" ? "grab and go"
                   : snack.prepMinutes ? `${snack.prepMinutes} min` : TIERS[snack.tier].label.toLowerCase()}
               </span>
+              {hasTag(snack, DINNER_TAG) && (
+                <>
+                  <span className="text-stone-300">·</span>
+                  <span style={{ color: TAG_TONE }}>{TAG_LABEL[DINNER_TAG].toLowerCase()}</span>
+                </>
+              )}
               {last && (
                 <>
                   <span className="text-stone-300">·</span>
@@ -1341,13 +1386,15 @@ function LogView({ week, pool, onTogglePrepped, onLog, onGoToWeek }) {
 
 /* ----------------------------------------------------------- library view */
 
-function LibraryView({ library, onAdd, onRemove, busy, setBusy, flash }) {
+function LibraryView({ library, onAdd, onRemove, selectedIds, onToggleInWeek, onToggleTag, busy, setBusy, flash }) {
   const [q, setQ] = useState("");
+  const [dinnerOnly, setDinnerOnly] = useState(false);
   const [sheet, setSheet] = useState(null); // "url" | "manual"
   const [url, setUrl] = useState("");
   const [importError, setImportError] = useState(null);
 
   const filtered = library.filter((s) => {
+    if (dinnerOnly && !hasTag(s, DINNER_TAG)) return false;
     if (!q.trim()) return true;
     const t = `${s.title} ${s.vegetable} ${(s.ingredients || []).map((i) => i.name).join(" ")}`.toLowerCase();
     return t.includes(q.toLowerCase());
@@ -1385,14 +1432,22 @@ function LibraryView({ library, onAdd, onRemove, busy, setBusy, flash }) {
         </button>
       </div>
 
+      <div className="flex gap-2 mb-4">
+        <Pill active={dinnerOnly} tone={TAG_TONE} onClick={() => setDinnerOnly((v) => !v)}>
+          {TAG_LABEL[DINNER_TAG]}
+        </Pill>
+      </div>
+
       {!filtered.length && (
-        <Empty icon={BookMarked}>Nothing matches that. Try a vegetable name.</Empty>
+        <Empty icon={BookMarked}>Nothing matches that. Try a vegetable name or clear the tag filter.</Empty>
       )}
 
       <div className="space-y-2">
         {filtered.map((s) => {
           const avg = avgScore(s);
           const last = lastVerdict(s);
+          const inWeek = (selectedIds || []).includes(s.id);
+          const dinner = hasTag(s, DINNER_TAG);
           return (
             <div key={s.id} className="bg-white rounded-xl border border-stone-200 px-4 py-3.5 flex items-start gap-3">
               <div className="flex-1 min-w-0">
@@ -1412,6 +1467,22 @@ function LibraryView({ library, onAdd, onRemove, busy, setBusy, flash }) {
                   {s.lastMadeWeek ? `Made week of ${prettyWeek(s.lastMadeWeek)}` : "Not made yet"}
                   {(s.ratings || []).length > 1 && ` · ${s.ratings.length} times`}
                 </p>
+                <div className="flex gap-2 mt-2.5">
+                  <button onClick={() => onToggleInWeek(s)}
+                          className="px-3 py-1.5 rounded-full text-xs font-medium border flex items-center gap-1"
+                          style={inWeek
+                            ? { backgroundColor: "#3f6b46", borderColor: "#3f6b46", color: "white" }
+                            : { backgroundColor: "white", borderColor: "#d6d3cd", color: "#57534e" }}>
+                    {inWeek ? <><Check size={12} strokeWidth={3} /> In this week</> : <><Plus size={12} /> Add to this week</>}
+                  </button>
+                  <button onClick={() => onToggleTag(s.id, DINNER_TAG)}
+                          className="px-3 py-1.5 rounded-full text-xs font-medium border"
+                          style={dinner
+                            ? { backgroundColor: TAG_TONE, borderColor: TAG_TONE, color: "white" }
+                            : { backgroundColor: "white", borderColor: "#e7e5e0", color: "#a8a29e" }}>
+                    {TAG_LABEL[DINNER_TAG]}
+                  </button>
+                </div>
               </div>
               <button onClick={() => onRemove(s.id)} className="p-2 -m-1 text-stone-300 shrink-0">
                 <Trash2 size={15} />
@@ -1462,6 +1533,7 @@ function ManualForm({ initialUrl, onSave }) {
   const [veg, setVeg] = useState("");
   const [tier, setTier] = useState("assembly");
   const [lines, setLines] = useState("");
+  const [dinner, setDinner] = useState(false);
 
   function save() {
     if (!title.trim()) return;
@@ -1473,6 +1545,7 @@ function ManualForm({ initialUrl, onSave }) {
     onSave({
       id: newId(), title: title.trim(), vegetable: veg.trim().toLowerCase() || "mixed",
       tier, prepMinutes: null, ingredients, steps: "", url: initialUrl || "",
+      tags: dinner ? [DINNER_TAG] : [],
       source: "manual", ratings: [], lastMadeWeek: null,
     });
   }
@@ -1487,6 +1560,9 @@ function ManualForm({ initialUrl, onSave }) {
         {TIER_ORDER.map((t) => (
           <Pill key={t} active={tier === t} onClick={() => setTier(t)}>{TIERS[t].label}</Pill>
         ))}
+      </div>
+      <div className="flex gap-2">
+        <Pill active={dinner} tone={TAG_TONE} onClick={() => setDinner((v) => !v)}>{TAG_LABEL[DINNER_TAG]}</Pill>
       </div>
       <textarea value={lines} onChange={(e) => setLines(e.target.value)} rows={5}
                 placeholder={"One ingredient per line\n2 zucchini\n1 cup yogurt"}
