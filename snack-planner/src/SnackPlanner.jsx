@@ -686,7 +686,8 @@ export default function SnackPlanner() {
       });
       setWeek((w) => ({ ...w, suggestions: [...existing, ...picks, ...ideas] }));
     } catch (e) {
-      setError("Couldn't reach the idea generator. The library picks are below — try again, or add a recipe by URL.");
+      console.error("generateIdeas failed", e);
+      setError(`Couldn't get new ideas (${e.message}). The library picks are below — try again, or add a recipe by URL.`);
     } finally {
       setBusy(null);
     }

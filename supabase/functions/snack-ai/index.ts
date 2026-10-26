@@ -47,7 +47,7 @@ Deno.serve(async (req) => {
 
   const body = {
     model: "claude-sonnet-4-6",
-    max_tokens: 1000,
+    max_tokens: 2500,
     messages: [{ role: "user", content: prompt }],
   };
   if (search) body.tools = [{ type: "web_search_20250305", name: "web_search" }];
