@@ -1,0 +1,12 @@
+# Changelog
+
+Newest first. Add an entry for every user-visible or infrastructure change.
+
+## 2026-10-26
+- Deploy to GitHub Pages via GitHub Actions; Vite `base` set to `/snack-planner/`.
+- Added `docs/` and `CLAUDE.md`.
+
+## 2026-09-16
+- Initial port of the Claude Artifact (`snack-planner.jsx`) to a standalone Vite/React app.
+- Storage moved from `window.storage` to Supabase (`kv_store`).
+- Direct browser calls to the Anthropic API replaced by the `snack-ai` Supabase Edge Function.

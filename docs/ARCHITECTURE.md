@@ -1,0 +1,41 @@
+# Architecture
+
+```
+Browser (GitHub Pages)
+  ├─ supabase-js ──HTTPS──> Supabase REST ──> Postgres: kv_store
+  └─ fetch ───────HTTPS──> Edge Function snack-ai ──> Anthropic API
+```
+
+## Pieces
+| Piece | Where | Role |
+|---|---|---|
+| Frontend | `snack-planner/` (Vite + React + Tailwind) | The whole app is `src/SnackPlanner.jsx` |
+| Database | Supabase project `oobnfidfqihesilvhoxv` | One table, `kv_store(key text pk, value jsonb, updated_at)` |
+| AI proxy | `supabase/functions/snack-ai/index.ts` | Holds `ANTHROPIC_API_KEY`, forwards prompts, returns the Anthropic response |
+| Hosting | GitHub Pages | Built and deployed by `.github/workflows/deploy.yml` on push to `main` |
+
+## Storage model
+Three keys, each a JSON blob in `kv_store` (originally `window.storage` in the Claude Artifact version):
+- `snackplan:core:v1`: library, archived weeks, exposure counts
+- `snackplan:week:v1`: the current week (suggestions, picks, prepped, ratings, list state)
+- `snackplan:pantry:v1`: ingredients always on hand
+
+Row-level security allows the `anon` role to select, insert and update. There is no auth.
+
+## Environment variables
+Set in `snack-planner/.env.local` for local dev, and as GitHub Actions secrets for the deployed build:
+- `VITE_SUPABASE_URL`
+- `VITE_SUPABASE_ANON_KEY`
+- `VITE_SNACK_AI_URL`
+
+Function secrets (Supabase, not in the repo): `ANTHROPIC_API_KEY`, optional `ALLOWED_ORIGIN`.
+
+## Deploying
+- **Frontend:** push to `main`. The workflow builds `snack-planner/` and publishes `dist`. Vite `base` is `/snack-planner/`.
+- **Function:** `supabase functions deploy snack-ai --no-verify-jwt` from the repo root.
+- **Schema:** add a new file under `supabase/migrations/` and run `supabase db push` from the repo root.
+
+## Gotchas
+- `supabase db push` needs a direct Postgres connection (ports 5432/6543). Some networks block this; the Supabase SQL Editor works over HTTPS as a fallback. Migration `0001` was applied that way, so it may need `supabase migration repair --status applied 0001` before a future `db push`.
+- Supabase CLI commands run from the repo root; npm commands run from `snack-planner/`.
+- The anon key is public by design (it ships in the built JS). Never put the service_role key or the Anthropic key in the frontend.

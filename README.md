@@ -87,7 +87,16 @@ cd snack-planner
 npm run dev
 ```
 
-## Deploying the frontend (Vercel)
+More detail lives in `docs/`: [FEATURES](docs/FEATURES.md), [ARCHITECTURE](docs/ARCHITECTURE.md), [CHANGELOG](docs/CHANGELOG.md).
+
+## Deploying the frontend
+
+The live site is built and published to GitHub Pages by
+`.github/workflows/deploy.yml` on every push to `main`. It needs the three
+`VITE_*` values as GitHub Actions secrets and **Settings -> Pages -> Source**
+set to "GitHub Actions". The alternative below uses Vercel instead.
+
+### Alternative: Vercel
 
 Supabase only hosts the database and the Edge Function — the static
 frontend needs a separate host. Vercel is the simplest pairing:
