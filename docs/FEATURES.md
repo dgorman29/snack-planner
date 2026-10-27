@@ -2,6 +2,9 @@
 
 Current behavior of the app. Update this file whenever a feature is added, changed or removed.
 
+## Look and feel
+- Cozy "Peach Jam" theme: blush background, outlined cards with a flat shadow, rounded Fredoka headings. Tabs are in a floating dark bar at the bottom; the current tab shows its name. The Log tab shows a count badge when prepped snacks need a rating.
+
 ## Install as an app
 - Installable as a standalone app (Chrome on Android: menu > Install app). Opens full-screen with its own icon. Requires being online; there is no offline mode.
 

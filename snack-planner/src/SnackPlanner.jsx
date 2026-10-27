@@ -75,18 +75,22 @@ const TIER_ORDER = ["grab", "assembly", "batch"];
 // Optional tags stored on a snack as `tags: [...]`. Older snacks have no `tags` field.
 const DINNER_TAG = "weekday-dinner";
 const TAG_LABEL = { [DINNER_TAG]: "Weekday dinner" };
-const TAG_TONE = "#4a76b8";
 const hasTag = (snack, tag) => (snack.tags || []).includes(tag);
 
 const SECTIONS = ["produce", "dairy", "pantry", "frozen", "other"];
 const SECTION_LABEL = {
   produce: "Produce", dairy: "Dairy", pantry: "Pantry", frozen: "Frozen", other: "Other",
 };
+// Tailwind background class for each shopping-list section's label.
+const SECTION_BG = {
+  produce: "bg-mint", dairy: "bg-butter", pantry: "bg-peach", frozen: "bg-ice", other: "bg-lilac",
+};
 
+// `tone` is a text colour that reads on white or blush; `bg` fills the rating buttons.
 const VERDICTS = {
-  loved: { label: "Loved it", score: 3, tone: "#2f7d55" },
-  some: { label: "Ate some", score: 2, tone: "#b1791f" },
-  refused: { label: "Refused", score: 1, tone: "#9a5560" },
+  loved: { label: "Loved it", score: 3, tone: "#2D4A3A", bg: "bg-mint" },
+  some: { label: "Ate some", score: 2, tone: "#7A4E0F", bg: "bg-butter" },
+  refused: { label: "Refused", score: 1, tone: "#9A2F4B", bg: "bg-peach" },
 };
 
 // Exposures it can take before a new vegetable lands. Drives the tally meter.
@@ -514,16 +518,45 @@ function parseIngredientLines(text, previous = []) {
 
 /* --------------------------------------------------------------- UI bits */
 
-function Pill({ active, onClick, children, tone }) {
+function Pill({ active, onClick, children }) {
   return (
     <button
       onClick={onClick}
-      className={`px-3 py-2 rounded-full text-sm font-medium border transition-colors ${
-        active ? "text-white border-transparent" : "bg-white text-stone-600 border-stone-200"
+      aria-pressed={!!active}
+      className={`min-h-[44px] px-4 rounded-full border-2 border-ink text-[13px] font-extrabold whitespace-nowrap shrink-0 ${
+        active ? "bg-butter" : "bg-white"
       }`}
-      style={active ? { backgroundColor: tone || "#3f6b46" } : undefined}
     >
       {children}
+    </button>
+  );
+}
+
+function TagChip() {
+  return <span className="chip bg-mint text-mintink">{TAG_LABEL[DINNER_TAG]}</span>;
+}
+
+/* Round check used on cards and rows. `size` is the tap target. */
+function CheckCircle({ on, onClick, label, size = 40 }) {
+  return (
+    <button
+      onClick={onClick} aria-label={label} aria-pressed={!!on}
+      className={`rounded-full border-2 border-ink flex items-center justify-center shrink-0 ${on ? "bg-berry text-white" : "bg-white"}`}
+      style={{ width: size, height: size }}
+    >
+      {on && <Check size={18} strokeWidth={3} />}
+    </button>
+  );
+}
+
+/* Square check for list rows. The button is the 44px tap target. */
+function CheckBox({ on, onClick, label }) {
+  return (
+    <button onClick={onClick} aria-label={label} aria-pressed={!!on}
+            className="w-11 h-11 flex items-center justify-center shrink-0">
+      <span className={`w-6 h-6 rounded-lg border-2 border-ink flex items-center justify-center ${on ? "bg-berry text-white" : "bg-white"}`}>
+        {on && <Check size={14} strokeWidth={3.4} />}
+      </span>
     </button>
   );
 }
@@ -531,7 +564,7 @@ function Pill({ active, onClick, children, tone }) {
 function VegDot({ veg, size = 10 }) {
   return (
     <span
-      className="inline-block rounded-full shrink-0"
+      className="inline-block rounded-full shrink-0 border-[1.5px] border-ink"
       style={{ width: size, height: size, backgroundColor: vegColor(veg) }}
     />
   );
@@ -541,9 +574,9 @@ function ExposureMeter({ count, target = EXPOSURE_TARGET, color }) {
   const cells = [];
   for (let i = 0; i < target; i++) {
     cells.push(
-      <span key={i} className="rounded-sm" style={{
-        width: 8, height: 14,
-        backgroundColor: i < count ? color : "#e7e5e0",
+      <span key={i} className="rounded-sm border border-ink" style={{
+        width: 9, height: 16,
+        backgroundColor: i < count ? color : "#FFFFFF",
       }} />
     );
   }
@@ -551,7 +584,7 @@ function ExposureMeter({ count, target = EXPOSURE_TARGET, color }) {
   return (
     <span className="inline-flex items-center gap-1">
       <span className="inline-flex gap-0.5">{cells}</span>
-      {over > 0 && <span className="text-xs text-stone-400">+{over}</span>}
+      {over > 0 && <span className="text-xs font-bold text-muted">+{over}</span>}
     </span>
   );
 }
@@ -559,13 +592,13 @@ function ExposureMeter({ count, target = EXPOSURE_TARGET, color }) {
 function Sheet({ open, onClose, title, children }) {
   if (!open) return null;
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center" style={{ backgroundColor: "rgba(28,26,23,0.45)" }}>
-      <div className="bg-white w-full rounded-t-2xl max-h-full overflow-y-auto" style={{ maxWidth: 560 }}>
-        <div className="sticky top-0 bg-white flex items-center justify-between px-4 py-3 border-b border-stone-100">
-          <h2 className="text-base font-semibold text-stone-800">{title}</h2>
-          <button onClick={onClose} className="p-2 -m-2 text-stone-400"><X size={20} /></button>
+    <div className="fixed inset-0 z-50 flex items-end justify-center" style={{ backgroundColor: "rgba(61,43,43,0.5)" }}>
+      <div className="bg-blush w-full rounded-t-[28px] border-2 border-b-0 border-ink max-h-full overflow-y-auto" style={{ maxWidth: 560 }}>
+        <div className="sticky top-0 bg-blush flex items-center justify-between px-5 py-3 border-b-2 border-line">
+          <h2 className="font-display text-xl font-semibold">{title}</h2>
+          <button onClick={onClose} aria-label="Close" className="w-11 h-11 -mr-2 flex items-center justify-center rounded-full"><X size={22} /></button>
         </div>
-        <div className="p-4 pb-8">{children}</div>
+        <div className="p-5 pb-8">{children}</div>
       </div>
     </div>
   );
@@ -574,8 +607,10 @@ function Sheet({ open, onClose, title, children }) {
 function Empty({ icon: Icon, children, action }) {
   return (
     <div className="text-center py-12 px-6">
-      <Icon size={28} className="mx-auto mb-3 text-stone-300" />
-      <p className="text-sm text-stone-500 leading-relaxed">{children}</p>
+      <span className="w-16 h-16 mx-auto mb-4 rounded-full bg-butter border-2 border-ink shadow-sticker-sm flex items-center justify-center">
+        <Icon size={28} />
+      </span>
+      <p className="text-[15px] font-semibold text-muted leading-relaxed">{children}</p>
       {action && <div className="mt-4">{action}</div>}
     </div>
   );
@@ -823,8 +858,8 @@ function SnackPlannerApp({ onSignOut }) {
 
   if (!ready) {
     return (
-      <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: "#f7f7f4" }}>
-        <Loader2 className="animate-spin text-stone-400" size={22} />
+      <div className="min-h-screen flex items-center justify-center bg-blush">
+        <Loader2 className="animate-spin text-muted" size={22} />
       </div>
     );
   }
@@ -838,36 +873,47 @@ function SnackPlannerApp({ onSignOut }) {
   ];
 
   return (
-    <div className="min-h-screen" style={{ backgroundColor: "#f7f7f4", color: "#2b2926" }}>
-      <div className="mx-auto pb-24" style={{ maxWidth: 560 }}>
+    <div className="min-h-screen bg-blush text-ink">
+      <div className="mx-auto pb-32" style={{ maxWidth: 560 }}>
 
-        <header className="px-4 pt-5 pb-3">
-          <div className="flex items-baseline justify-between">
-            <h1 className="text-xl font-semibold tracking-tight">
-              {tab === "week" && "This week"}
-              {tab === "list" && "Shopping list"}
-              {tab === "log" && "How'd it go"}
-              {tab === "library" && "Library"}
-              {tab === "history" && "History"}
-            </h1>
-            <span className="text-sm text-stone-500">
-              {prettyWeek(week.id)}
-              <button onClick={onSignOut} className="ml-3 text-xs text-stone-400 underline">Sign out</button>
-            </span>
+        <header className="px-5 pt-7 pb-4">
+          <div className="flex items-end justify-between gap-3">
+            <div>
+              <div className="text-[13px] font-extrabold text-muted mb-1.5">
+                {prettyWeek(week.id)}
+                <button onClick={onSignOut} className="ml-3 text-xs font-bold underline">Sign out</button>
+              </div>
+              <h1 className="font-display text-[34px] leading-none font-semibold tracking-tight">
+                {tab === "week" && "Our week"}
+                {tab === "list" && "Shopping list"}
+                {tab === "log" && "How'd it go?"}
+                {tab === "library" && "Library"}
+                {tab === "history" && "History"}
+              </h1>
+            </div>
+            {tab === "week" && week.selected.length > 0 && (
+              <span className="rounded-full bg-butter border-2 border-ink shadow-sticker-sm px-3 py-1.5 text-[13px] font-extrabold whitespace-nowrap">
+                {week.selected.length} chosen
+              </span>
+            )}
+            {tab === "log" && needsLogging > 0 && (
+              <span className="rounded-full bg-butter border-2 border-ink shadow-sticker-sm px-3 py-1.5 text-[13px] font-extrabold whitespace-nowrap">
+                {needsLogging} to rate
+              </span>
+            )}
           </div>
         </header>
 
         {!storageOk && (
-          <div className="mx-4 mb-3 rounded-lg px-3 py-2 text-xs" style={{ backgroundColor: "#fdf6e9", color: "#6b5a3a" }}>
+          <div className="mx-5 mb-3 rounded-2xl border-2 border-ink bg-butter px-4 py-3 text-sm font-bold">
             Supabase isn't configured, so nothing will be saved between visits. Set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY.
           </div>
         )}
 
         {error && (
-          <div className="mx-4 mb-3 rounded-lg px-3 py-2 text-xs flex items-start gap-2"
-               style={{ backgroundColor: "#fbf0f1", color: "#6d4148" }}>
+          <div className="mx-5 mb-3 rounded-2xl border-2 border-ink bg-peach px-4 py-3 text-sm font-bold flex items-start gap-2">
             <span className="flex-1">{error}</span>
-            <button onClick={() => setError(null)}><X size={14} /></button>
+            <button onClick={() => setError(null)} aria-label="Dismiss" className="w-8 h-8 -m-1 flex items-center justify-center"><X size={16} /></button>
           </div>
         )}
 
@@ -909,26 +955,29 @@ function SnackPlannerApp({ onSignOut }) {
       </div>
 
       {toast && (
-        <div className="fixed left-0 right-0 flex justify-center z-40" style={{ bottom: 88 }}>
-          <div className="px-4 py-2 rounded-full text-sm text-white shadow-lg" style={{ backgroundColor: "#3f4540" }}>
+        <div className="fixed left-0 right-0 flex justify-center z-40 px-5" style={{ bottom: 100 }}>
+          <div className="px-4 py-2.5 rounded-full text-sm font-bold bg-ink text-white shadow-sticker">
             {toast}
           </div>
         </div>
       )}
 
-      <nav className="fixed bottom-0 left-0 right-0 border-t border-stone-200 bg-white">
-        <div className="mx-auto flex" style={{ maxWidth: 560 }}>
+      <nav className="fixed bottom-0 left-0 right-0 px-5 pb-4 z-30 pointer-events-none">
+        <div className="mx-auto flex items-center gap-0.5 p-1.5 rounded-[28px] bg-ink pointer-events-auto" style={{ maxWidth: 520 }}>
           {TABS.map((t) => {
             const Icon = t.icon;
             const active = tab === t.id;
             return (
               <button key={t.id} onClick={() => setTab(t.id)}
-                      className="flex-1 flex flex-col items-center gap-1 py-3 pb-5 relative">
-                <Icon size={20} style={{ color: active ? "#3f6b46" : "#a8a29e" }} />
-                <span className="text-xs" style={{ color: active ? "#3f6b46" : "#a8a29e" }}>{t.label}</span>
+                      aria-label={t.label} aria-current={active ? "page" : undefined}
+                      className={`relative min-h-[48px] rounded-[22px] flex items-center justify-center gap-1.5 ${
+                        active ? "flex-[1.6] bg-peach text-ink" : "flex-1 text-blush"
+                      }`}>
+                <Icon size={active ? 20 : 22} strokeWidth={active ? 2.2 : 1.9} />
+                {active && <span className="font-display text-sm font-semibold">{t.label}</span>}
                 {t.badge > 0 && (
-                  <span className="absolute rounded-full text-white flex items-center justify-center"
-                        style={{ top: 6, right: "50%", marginRight: -22, width: 16, height: 16, fontSize: 10, backgroundColor: "#b1791f" }}>
+                  <span className="absolute -top-1 right-1 rounded-full bg-berry text-white border-2 border-ink flex items-center justify-center text-[10px] font-extrabold"
+                        style={{ minWidth: 20, height: 20 }}>
                     {t.badge}
                   </span>
                 )}
@@ -954,17 +1003,18 @@ function WeekView({ week, setWeek, pool, busy, onBuild, onToggleSelect, onToggle
   }
 
   return (
-    <div className="px-4">
+    <div className="px-5">
       <div className="flex items-center justify-between gap-3 mb-4">
         <button
           onClick={() => setWeek((w) => ({ ...w, libraryOnly: !w.libraryOnly }))}
-          className="flex items-center gap-2 text-sm text-stone-600"
+          role="switch" aria-checked={!!week.libraryOnly}
+          className="min-h-[44px] flex items-center gap-2 text-sm font-extrabold"
         >
           <span
-            className="rounded-full p-0.5 transition-colors flex"
-            style={{ width: 40, backgroundColor: week.libraryOnly ? "#3f6b46" : "#dedbd4" }}
+            className={`rounded-full border-2 border-ink flex items-center p-0.5 transition-colors ${week.libraryOnly ? "bg-berry justify-end" : "bg-peach justify-start"}`}
+            style={{ width: 46, height: 28 }}
           >
-            <span className="bg-white rounded-full block" style={{ width: 18, height: 18, marginLeft: week.libraryOnly ? 18 : 0 }} />
+            <span className="bg-white rounded-full border-2 border-ink block" style={{ width: 20, height: 20 }} />
           </span>
           Library only
         </button>
@@ -972,22 +1022,22 @@ function WeekView({ week, setWeek, pool, busy, onBuild, onToggleSelect, onToggle
         <button
           onClick={() => onBuild({ append: false })}
           disabled={busy === "ideas"}
-          className="flex items-center gap-1.5 px-4 py-2 rounded-full text-sm font-medium text-white"
-          style={{ backgroundColor: "#3f6b46", opacity: busy === "ideas" ? 0.6 : 1 }}
+          className="btn-primary"
+          style={{ opacity: busy === "ideas" ? 0.6 : 1 }}
         >
-          {busy === "ideas" ? <Loader2 size={15} className="animate-spin" /> : <RefreshCw size={15} />}
+          {busy === "ideas" ? <Loader2 size={16} className="animate-spin" /> : <RefreshCw size={16} />}
           {pool.length ? "New set" : "Suggest snacks"}
         </button>
       </div>
 
       {pool.length > 0 && (
-        <div className="flex gap-2 mb-4 overflow-x-auto pb-1">
+        <div className="flex gap-2 mb-4 overflow-x-auto py-1 -mx-5 px-5">
           {TIER_ORDER.map((t) => (
             <Pill key={t} active={tierFilter.includes(t)} onClick={() => toggleTier(t)}>
               {TIERS[t].label}
             </Pill>
           ))}
-          <Pill active={dinnerOnly} tone={TAG_TONE} onClick={() => setDinnerOnly((v) => !v)}>
+          <Pill active={dinnerOnly} onClick={() => setDinnerOnly((v) => !v)}>
             {TAG_LABEL[DINNER_TAG]}
           </Pill>
         </div>
@@ -1000,7 +1050,7 @@ function WeekView({ week, setWeek, pool, busy, onBuild, onToggleSelect, onToggle
         </Empty>
       )}
 
-      <div className="space-y-3">
+      <div className="space-y-3.5">
         {shown.map((s) => (
           <SnackCard
             key={s.id} snack={s}
@@ -1013,7 +1063,7 @@ function WeekView({ week, setWeek, pool, busy, onBuild, onToggleSelect, onToggle
       </div>
 
       {busy === "ideas" && (
-        <div className="flex items-center gap-2 justify-center py-6 text-sm text-stone-500">
+        <div className="flex items-center gap-2 justify-center py-6 text-sm font-bold text-muted">
           <Loader2 size={16} className="animate-spin" /> Thinking up new ideas
         </div>
       )}
@@ -1021,20 +1071,20 @@ function WeekView({ week, setWeek, pool, busy, onBuild, onToggleSelect, onToggle
       {pool.length > 0 && busy !== "ideas" && (
         <button
           onClick={() => onBuild({ append: true })}
-          className="w-full mt-4 py-3 rounded-xl border border-stone-200 bg-white text-sm text-stone-600 flex items-center justify-center gap-1.5"
+          className="w-full mt-4 min-h-[48px] rounded-[18px] border-2 border-dashed border-dim font-display text-[15px] font-semibold flex items-center justify-center gap-1.5"
         >
-          <Plus size={15} /> More ideas
+          <Plus size={16} /> More ideas
         </button>
       )}
 
       {selectedCount > 0 && (
         <button
           onClick={onGoToList}
-          className="w-full mt-4 py-3.5 rounded-xl text-white text-sm font-medium flex items-center justify-center gap-2"
-          style={{ backgroundColor: "#2b2926" }}
+          className="sticker w-full mt-4 min-h-[56px] px-4 font-display text-base font-semibold flex items-center gap-2.5"
         >
-          <ShoppingBasket size={16} />
-          {selectedCount} chosen — see the shopping list
+          <ShoppingBasket size={22} />
+          <span className="flex-1 text-left">{selectedCount} chosen — see the shopping list</span>
+          <ChevronRight size={20} />
         </button>
       )}
 
@@ -1048,56 +1098,43 @@ function SnackCard({ snack, selected, prepped, onSelect, onPrepped }) {
   const last = lastVerdict(snack);
 
   return (
-    <div className="bg-white rounded-xl border" style={{ borderColor: selected ? "#3f6b46" : "#eae8e3" }}>
-      <div className="flex">
-        <button onClick={onSelect} className="pl-4 pr-3 py-4 flex items-start shrink-0">
-          <span className="rounded-md border flex items-center justify-center"
-                style={{
-                  width: 24, height: 24,
-                  borderColor: selected ? "#3f6b46" : "#d6d3cd",
-                  backgroundColor: selected ? "#3f6b46" : "transparent",
-                }}>
-            {selected && <Check size={15} color="white" strokeWidth={3} />}
-          </span>
-        </button>
+    <div className={`border-2 border-ink rounded-[22px] shadow-sticker ${selected ? "bg-mint" : "bg-white"}`}>
+      <div className="flex items-start gap-3 p-3.5">
+        <CheckCircle on={selected} onClick={onSelect}
+                     label={selected ? `Remove ${snack.title} from this week` : `Choose ${snack.title}`} />
 
-        <div className="flex-1 py-4 pr-4 min-w-0">
-          <button onClick={() => setOpen((o) => !o)} className="text-left w-full">
+        <div className="flex-1 min-w-0">
+          <button onClick={() => setOpen((o) => !o)} aria-expanded={open} className="text-left w-full">
             <div className="flex items-start justify-between gap-2">
-              <h3 className="text-sm font-semibold leading-snug text-stone-800">{snack.title}</h3>
-              {open ? <ChevronDown size={16} className="text-stone-300 shrink-0 mt-0.5" />
-                    : <ChevronRight size={16} className="text-stone-300 shrink-0 mt-0.5" />}
+              <h3 className="font-display text-base font-semibold leading-tight">{snack.title}</h3>
+              {open ? <ChevronDown size={18} className="shrink-0 mt-0.5" />
+                    : <ChevronRight size={18} className="shrink-0 mt-0.5" />}
             </div>
-            <div className="flex items-center gap-2 flex-wrap mt-1.5 text-xs text-stone-500">
+            <div className="flex items-center gap-2 flex-wrap mt-1.5 text-xs font-extrabold">
               <span className="inline-flex items-center gap-1.5">
                 <VegDot veg={snack.vegetable} /> {snack.vegetable}
               </span>
-              <span className="text-stone-300">·</span>
+              <span>·</span>
               <span className="inline-flex items-center gap-1">
-                <Clock size={11} />
+                <Clock size={12} />
                 {snack.tier === "grab" ? "grab and go"
                   : snack.prepMinutes ? `${snack.prepMinutes} min` : TIERS[snack.tier].label.toLowerCase()}
               </span>
-              {hasTag(snack, DINNER_TAG) && (
-                <>
-                  <span className="text-stone-300">·</span>
-                  <span style={{ color: TAG_TONE }}>{TAG_LABEL[DINNER_TAG].toLowerCase()}</span>
-                </>
-              )}
+              {hasTag(snack, DINNER_TAG) && <TagChip />}
               {last && (
                 <>
-                  <span className="text-stone-300">·</span>
+                  <span>·</span>
                   <span style={{ color: VERDICTS[last].tone }}>{VERDICTS[last].label.toLowerCase()} last time</span>
                 </>
               )}
             </div>
             {snack._reason && (
-              <p className="text-xs mt-1.5 inline-flex items-center gap-1" style={{ color: "#6b7f2f" }}>
-                <Sparkles size={11} /> {snack._reason}
+              <p className="text-xs font-extrabold mt-2 inline-flex items-center gap-1 chip bg-butter">
+                <Sparkles size={12} /> {snack._reason}
               </p>
             )}
             {!snack._reason && last === "refused" && (
-              <p className="text-xs mt-1.5" style={{ color: "#7a6f60" }}>
+              <p className="text-xs font-bold mt-1.5 text-muted">
                 Back for another go — it can take ten tries.
               </p>
             )}
@@ -1105,18 +1142,18 @@ function SnackCard({ snack, selected, prepped, onSelect, onPrepped }) {
 
           {open && (
             <div className="mt-3">
-              {snack.steps && <p className="text-xs text-stone-600 leading-relaxed">{snack.steps}</p>}
+              {snack.steps && <p className="text-[13px] font-semibold leading-relaxed">{snack.steps}</p>}
               {!!(snack.ingredients || []).length && (
-                <ul className="mt-2 text-xs text-stone-500 space-y-0.5">
+                <div className="mt-2 flex flex-wrap gap-1.5">
                   {snack.ingredients.map((i, n) => (
-                    <li key={n}>{ingredientLine(i)}</li>
+                    <span key={n} className="chip bg-white">{ingredientLine(i)}</span>
                   ))}
-                </ul>
+                </div>
               )}
               {snack.url && (
                 <a href={snack.url} target="_blank" rel="noreferrer"
-                   className="inline-flex items-center gap-1 text-xs mt-2" style={{ color: "#3f6b46" }}>
-                  <Link2 size={11} /> recipe
+                   className="inline-flex items-center gap-1 text-xs font-extrabold mt-2 underline">
+                  <Link2 size={12} /> recipe
                 </a>
               )}
             </div>
@@ -1125,13 +1162,10 @@ function SnackCard({ snack, selected, prepped, onSelect, onPrepped }) {
           {selected && (
             <button
               onClick={onPrepped}
-              className="mt-3 w-full py-2.5 rounded-lg text-xs font-medium flex items-center justify-center gap-1.5"
-              style={{
-                backgroundColor: prepped ? "#eef3ee" : "#f5f4f1",
-                color: prepped ? "#3f6b46" : "#78716c",
-              }}
+              aria-pressed={!!prepped}
+              className={`btn mt-3 w-full text-sm ${prepped ? "bg-berry text-white shadow-sticker-sm" : "bg-white text-ink"}`}
             >
-              {prepped ? <><Check size={13} /> Prepped</> : "Mark as prepped"}
+              {prepped ? <><Check size={15} strokeWidth={3} /> Prepped</> : "Mark as prepped"}
             </button>
           )}
         </div>
@@ -1218,7 +1252,7 @@ function ShoppingView({ snacks, week, setWeek, pantry, setPantry, flash, onGoToW
   if (!snacks.length && !(week.manual || []).length) {
     return (
       <Empty icon={ShoppingBasket} action={
-        <button onClick={onGoToWeek} className="px-4 py-2.5 rounded-full text-sm text-white" style={{ backgroundColor: "#3f6b46" }}>
+        <button onClick={onGoToWeek} className="btn-primary">
           Pick this week's snacks
         </button>
       }>
@@ -1228,58 +1262,50 @@ function ShoppingView({ snacks, week, setWeek, pantry, setPantry, flash, onGoToW
   }
 
   return (
-    <div className="px-4">
-      <div className="flex items-center justify-between mb-4 text-sm text-stone-500">
+    <div className="px-5">
+      <div className="flex items-center justify-between mb-4 text-[13px] font-extrabold text-muted">
         <span>{snacks.length} snack{snacks.length === 1 ? "" : "s"}</span>
-        <button onClick={copy} className="flex items-center gap-1.5 px-3 py-2 rounded-full bg-white border border-stone-200">
-          <Copy size={14} /> Copy as text
+        <button onClick={copy} className="btn-plain shadow-sticker-sm text-sm">
+          <Copy size={15} /> Copy as text
         </button>
       </div>
 
-      <div className="space-y-5">
+      <div className="space-y-4">
         {SECTIONS.map((sec) => {
           const items = (grouped[sec] || []).filter((r) => !isHave(r));
           const manual = (week.manual || []).filter((m) => m.section === sec);
           if (!items.length && !manual.length) return null;
           return (
             <div key={sec}>
-              <h3 className="text-xs font-semibold text-stone-400 mb-2 px-1">{SECTION_LABEL[sec]}</h3>
-              <div className="bg-white rounded-xl border border-stone-200 divide-y divide-stone-100">
+              <h3 className={`inline-block ${SECTION_BG[sec]} border-2 border-ink rounded-full px-3 py-0.5 font-display text-sm font-semibold mb-2`}>
+                {SECTION_LABEL[sec]}
+              </h3>
+              <div className="sticker overflow-hidden divide-y-2 divide-line">
                 {items.map((r) => {
                   const done = !!week.checked?.[r.key];
                   return (
-                    <div key={r.key} className="flex items-center">
-                      <button onClick={() => toggleCheck(r.key)} className="flex-1 flex items-center gap-3 px-4 py-3.5 text-left">
-                        <span className="rounded-md border flex items-center justify-center shrink-0"
-                              style={{ width: 22, height: 22, borderColor: done ? "#3f6b46" : "#d6d3cd", backgroundColor: done ? "#3f6b46" : "transparent" }}>
-                          {done && <Check size={14} color="white" strokeWidth={3} />}
+                    <div key={r.key} className="flex items-center min-h-[52px] pl-1 pr-1.5">
+                      <CheckBox on={done} onClick={() => toggleCheck(r.key)} label={`Check off ${r.name}`} />
+                      <div className="flex-1 min-w-0 py-2">
+                        <span className={`text-[15px] font-extrabold block ${done ? "line-through text-muted" : ""}`}>
+                          {rowLabel(r)}
                         </span>
-                        <span className="min-w-0">
-                          <span className={`text-sm block ${done ? "line-through text-stone-300" : "text-stone-700"}`}>
-                            {rowLabel(r)}
-                          </span>
-                          {r.from.length > 1 && (
-                            <span className="text-xs text-stone-400">for {r.from.length} snacks</span>
-                          )}
-                        </span>
-                      </button>
-                      <button onClick={() => toggleHave(r)} className="px-3 py-3.5 text-xs text-stone-400 shrink-0">
+                        {r.from.length > 1 && (
+                          <span className="text-xs font-bold text-muted">for {r.from.length} snacks</span>
+                        )}
+                      </div>
+                      <button onClick={() => toggleHave(r)} className="min-h-[44px] px-2.5 text-xs font-extrabold text-muted shrink-0">
                         have it
                       </button>
                     </div>
                   );
                 })}
                 {manual.map((m) => (
-                  <div key={m.id} className="flex items-center">
-                    <button onClick={() => toggleManual(m.id)} className="flex-1 flex items-center gap-3 px-4 py-3.5 text-left">
-                      <span className="rounded-md border flex items-center justify-center shrink-0"
-                            style={{ width: 22, height: 22, borderColor: m.checked ? "#3f6b46" : "#d6d3cd", backgroundColor: m.checked ? "#3f6b46" : "transparent" }}>
-                        {m.checked && <Check size={14} color="white" strokeWidth={3} />}
-                      </span>
-                      <span className={`text-sm ${m.checked ? "line-through text-stone-300" : "text-stone-700"}`}>{m.name}</span>
-                    </button>
-                    <button onClick={() => removeManual(m.id)} className="px-3 py-3.5 text-stone-300 shrink-0">
-                      <Trash2 size={15} />
+                  <div key={m.id} className="flex items-center min-h-[52px] pl-1 pr-1.5">
+                    <CheckBox on={m.checked} onClick={() => toggleManual(m.id)} label={`Check off ${m.name}`} />
+                    <span className={`flex-1 min-w-0 text-[15px] font-extrabold ${m.checked ? "line-through text-muted" : ""}`}>{m.name}</span>
+                    <button onClick={() => removeManual(m.id)} aria-label={`Remove ${m.name}`} className="w-11 h-11 flex items-center justify-center shrink-0 text-muted">
+                      <Trash2 size={16} />
                     </button>
                   </div>
                 ))}
@@ -1289,27 +1315,27 @@ function ShoppingView({ snacks, week, setWeek, pantry, setPantry, flash, onGoToW
         })}
       </div>
 
-      <div className="mt-5 bg-white rounded-xl border border-stone-200 p-3">
+      <div className="mt-5">
         <div className="flex gap-2">
           <input
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
             onKeyDown={(e) => { if (e.key === "Enter") addManual(); }}
             placeholder="Add something else"
-            className="flex-1 px-3 py-2.5 rounded-lg bg-stone-50 text-sm outline-none"
+            aria-label="Add something else"
+            className="field flex-1 min-w-0"
           />
-          <button onClick={addManual} className="px-4 rounded-lg text-white" style={{ backgroundColor: "#3f6b46" }}>
-            <Plus size={16} />
+          <button onClick={addManual} aria-label="Add item"
+                  className="btn-primary w-12 px-0 shrink-0">
+            <Plus size={22} strokeWidth={2.6} />
           </button>
         </div>
         <div className="flex gap-1.5 mt-2 overflow-x-auto">
           {SECTIONS.map((s) => (
-            <button key={s} onClick={() => setDraftSection(s)}
-                    className="px-2.5 py-1.5 rounded-full text-xs shrink-0"
-                    style={{
-                      backgroundColor: draftSection === s ? "#eef3ee" : "transparent",
-                      color: draftSection === s ? "#3f6b46" : "#a8a29e",
-                    }}>
+            <button key={s} onClick={() => setDraftSection(s)} aria-pressed={draftSection === s}
+                    className={`min-h-[40px] px-3 rounded-full text-xs font-extrabold shrink-0 border-2 ${
+                      draftSection === s ? `${SECTION_BG[s]} border-ink` : "border-transparent text-muted"
+                    }`}>
               {SECTION_LABEL[s]}
             </button>
           ))}
@@ -1318,16 +1344,17 @@ function ShoppingView({ snacks, week, setWeek, pantry, setPantry, flash, onGoToW
 
       {haveRows.length > 0 && (
         <div className="mt-5">
-          <button onClick={() => setShowHave((v) => !v)} className="flex items-center gap-1.5 text-xs text-stone-400 px-1">
-            {showHave ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+          <button onClick={() => setShowHave((v) => !v)} aria-expanded={showHave}
+                  className="min-h-[44px] flex items-center gap-1.5 text-[13px] font-extrabold text-muted px-1">
+            {showHave ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
             {haveRows.length} already at home
           </button>
           {showHave && (
-            <div className="mt-2 bg-white rounded-xl border border-stone-200 divide-y divide-stone-100">
+            <div className="sticker mt-1 divide-y-2 divide-line overflow-hidden">
               {haveRows.map((r) => (
-                <div key={r.key} className="flex items-center justify-between px-4 py-3">
-                  <span className="text-sm text-stone-400">{rowLabel(r)}</span>
-                  <button onClick={() => toggleHave(r)} className="text-xs" style={{ color: "#3f6b46" }}>
+                <div key={r.key} className="flex items-center justify-between pl-4 pr-1.5 min-h-[52px]">
+                  <span className="text-[15px] font-bold text-muted">{rowLabel(r)}</span>
+                  <button onClick={() => toggleHave(r)} className="min-h-[44px] px-2.5 text-xs font-extrabold text-berry">
                     add back
                   </button>
                 </div>
@@ -1349,7 +1376,7 @@ function LogView({ week, pool, onTogglePrepped, onLog, onGoToWeek }) {
   if (!chosen.length) {
     return (
       <Empty icon={ClipboardCheck} action={
-        <button onClick={onGoToWeek} className="px-4 py-2.5 rounded-full text-sm text-white" style={{ backgroundColor: "#3f6b46" }}>
+        <button onClick={onGoToWeek} className="btn-primary">
           Pick this week's snacks
         </button>
       }>
@@ -1359,22 +1386,18 @@ function LogView({ week, pool, onTogglePrepped, onLog, onGoToWeek }) {
   }
 
   return (
-    <div className="px-4 space-y-3">
+    <div className="px-5 space-y-3.5">
       {chosen.map((s) => {
         const prepped = week.prepped.includes(s.id);
         const verdict = week.logs?.[s.id];
         return (
-          <div key={s.id} className="bg-white rounded-xl border border-stone-200 p-4">
-            <div className="flex items-start gap-3">
-              <button onClick={() => onTogglePrepped(s.id)} className="shrink-0 mt-0.5">
-                <span className="rounded-md border flex items-center justify-center"
-                      style={{ width: 22, height: 22, borderColor: prepped ? "#3f6b46" : "#d6d3cd", backgroundColor: prepped ? "#3f6b46" : "transparent" }}>
-                  {prepped && <Check size={14} color="white" strokeWidth={3} />}
-                </span>
-              </button>
+          <div key={s.id} className={`sticker p-3.5 ${prepped ? "" : "bg-peach"}`}>
+            <div className="flex items-center gap-3">
+              <CheckCircle on={prepped} onClick={() => onTogglePrepped(s.id)} size={36}
+                           label={prepped ? `Unmark ${s.title} as prepped` : `Mark ${s.title} as prepped`} />
               <div className="min-w-0 flex-1">
-                <h3 className="text-sm font-semibold text-stone-800 leading-snug">{s.title}</h3>
-                <p className="text-xs text-stone-500 mt-1 inline-flex items-center gap-1.5">
+                <h3 className="font-display text-base font-semibold leading-tight">{s.title}</h3>
+                <p className="text-xs font-extrabold mt-1 inline-flex items-center gap-1.5">
                   <VegDot veg={s.vegetable} /> {s.vegetable}
                 </p>
               </div>
@@ -1385,20 +1408,15 @@ function LogView({ week, pool, onTogglePrepped, onLog, onGoToWeek }) {
                 {Object.entries(VERDICTS).map(([k, v]) => {
                   const on = verdict === k;
                   return (
-                    <button key={k} onClick={() => onLog(s.id, k)}
-                            className="flex-1 py-3 rounded-lg text-xs font-medium border"
-                            style={{
-                              borderColor: on ? v.tone : "#eae8e3",
-                              backgroundColor: on ? v.tone : "white",
-                              color: on ? "white" : "#78716c",
-                            }}>
+                    <button key={k} onClick={() => onLog(s.id, k)} aria-pressed={on}
+                            className={`btn flex-1 min-h-[48px] px-1 text-sm ${on ? `${v.bg} shadow-sticker-sm` : "bg-white"}`}>
                       {v.label}
                     </button>
                   );
                 })}
               </div>
             ) : (
-              <p className="text-xs text-stone-400 mt-3">Mark it prepped to rate it.</p>
+              <p className="text-[13px] font-bold mt-3">Mark it prepped to rate it.</p>
             )}
           </div>
         );
@@ -1442,22 +1460,23 @@ function LibraryView({ library, onAdd, onRemove, onUpdate, selectedIds, onToggle
   }
 
   return (
-    <div className="px-4">
-      <div className="flex gap-2 mb-4">
-        <div className="flex-1 flex items-center gap-2 bg-white border border-stone-200 rounded-full px-3.5">
-          <Search size={15} className="text-stone-300 shrink-0" />
+    <div className="px-5">
+      <div className="flex gap-2 mb-3">
+        <div className="flex-1 min-w-0 flex items-center gap-2 bg-white border-2 border-ink rounded-2xl px-3.5 min-h-[48px]">
+          <Search size={18} className="text-muted shrink-0" />
           <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search snacks or vegetables"
-                 className="flex-1 py-2.5 text-sm outline-none bg-transparent" />
-          {q && <button onClick={() => setQ("")} className="text-stone-300"><X size={15} /></button>}
+                 aria-label="Search snacks or vegetables"
+                 className="flex-1 min-w-0 py-2.5 text-[15px] font-bold outline-none bg-transparent" />
+          {q && <button onClick={() => setQ("")} aria-label="Clear search" className="w-8 h-8 flex items-center justify-center text-muted"><X size={16} /></button>}
         </div>
-        <button onClick={() => { setSheet("url"); setImportError(null); }}
-                className="px-4 rounded-full text-white flex items-center" style={{ backgroundColor: "#3f6b46" }}>
-          <Plus size={18} />
+        <button onClick={() => { setSheet("url"); setImportError(null); }} aria-label="Add a recipe"
+                className="btn-primary w-12 px-0 min-h-[48px] shrink-0">
+          <Plus size={22} strokeWidth={2.6} />
         </button>
       </div>
 
       <div className="flex gap-2 mb-4">
-        <Pill active={dinnerOnly} tone={TAG_TONE} onClick={() => setDinnerOnly((v) => !v)}>
+        <Pill active={dinnerOnly} onClick={() => setDinnerOnly((v) => !v)}>
           {TAG_LABEL[DINNER_TAG]}
         </Pill>
       </div>
@@ -1466,7 +1485,7 @@ function LibraryView({ library, onAdd, onRemove, onUpdate, selectedIds, onToggle
         <Empty icon={BookMarked}>Nothing matches that. Try a vegetable name or clear the tag filter.</Empty>
       )}
 
-      <div className="space-y-2">
+      <div className="space-y-3">
         {filtered.map((s) => (
           <LibraryCard
             key={s.id} snack={s}
@@ -1489,27 +1508,28 @@ function LibraryView({ library, onAdd, onRemove, onUpdate, selectedIds, onToggle
       </Sheet>
 
       <Sheet open={sheet === "url"} onClose={() => setSheet(null)} title="Add a recipe">
-        <p className="text-sm text-stone-500 leading-relaxed mb-3">
+        <p className="text-sm font-semibold text-muted leading-relaxed mb-3">
           Paste a link and the ingredients and quantities get pulled in so they feed the shopping list.
         </p>
         <input
           value={url} onChange={(e) => setUrl(e.target.value)}
           placeholder="https://"
-          className="w-full px-3.5 py-3 rounded-lg bg-stone-50 text-sm outline-none"
+          aria-label="Recipe link"
+          className="field"
         />
         {importError && (
-          <div className="mt-3 rounded-lg px-3 py-2 text-xs" style={{ backgroundColor: "#fbf0f1", color: "#6d4148" }}>
+          <div className="mt-3 rounded-2xl border-2 border-ink bg-peach px-3.5 py-2.5 text-[13px] font-bold">
             {importError}
           </div>
         )}
         <div className="flex gap-2 mt-4">
-          <button onClick={() => setSheet("manual")} className="flex-1 py-3 rounded-lg border border-stone-200 text-sm text-stone-600">
+          <button onClick={() => setSheet("manual")} className="btn-plain flex-1">
             Enter by hand
           </button>
           <button onClick={doImport} disabled={busy === "import" || !url.trim()}
-                  className="flex-1 py-3 rounded-lg text-white text-sm font-medium flex items-center justify-center gap-2"
-                  style={{ backgroundColor: "#3f6b46", opacity: busy === "import" || !url.trim() ? 0.5 : 1 }}>
-            {busy === "import" ? <><Loader2 size={15} className="animate-spin" /> Reading</> : "Pull it in"}
+                  className="btn-primary flex-1"
+                  style={{ opacity: busy === "import" || !url.trim() ? 0.5 : 1 }}>
+            {busy === "import" ? <><Loader2 size={16} className="animate-spin" /> Reading</> : "Pull it in"}
           </button>
         </div>
       </Sheet>
@@ -1530,85 +1550,78 @@ function LibraryCard({ snack: s, inWeek, onToggleInWeek, onToggleTag, onEdit, on
   const dinner = hasTag(s, DINNER_TAG);
 
   return (
-    <div className="bg-white rounded-xl border border-stone-200 px-4 py-3.5 flex items-start gap-3">
-      <div className="flex-1 min-w-0">
-        <button onClick={() => setOpen((o) => !o)} className="text-left w-full">
-          <div className="flex items-start justify-between gap-2">
-            <h3 className="text-sm font-medium text-stone-800 leading-snug">{s.title}</h3>
-            {open ? <ChevronDown size={16} className="text-stone-300 shrink-0 mt-0.5" />
-                  : <ChevronRight size={16} className="text-stone-300 shrink-0 mt-0.5" />}
-          </div>
-          <div className="flex items-center gap-2 flex-wrap mt-1 text-xs text-stone-500">
-            <span className="inline-flex items-center gap-1.5"><VegDot veg={s.vegetable} /> {s.vegetable}</span>
-            <span className="text-stone-300">·</span>
-            <span>{TIERS[s.tier].label}</span>
-            {!!s.prepMinutes && (
-              <>
-                <span className="text-stone-300">·</span>
-                <span className="inline-flex items-center gap-1"><Clock size={11} /> {s.prepMinutes} min</span>
-              </>
-            )}
-            {last && (
-              <>
-                <span className="text-stone-300">·</span>
-                <span style={{ color: VERDICTS[last].tone }}>{VERDICTS[last].label.toLowerCase()}</span>
-              </>
-            )}
-          </div>
-          <p className="text-xs text-stone-400 mt-1">
-            {s.lastMadeWeek ? `Made week of ${prettyWeek(s.lastMadeWeek)}` : "Not made yet"}
-            {(s.ratings || []).length > 1 && ` · ${s.ratings.length} times`}
-          </p>
-        </button>
-
-        {open && (
-          <div className="mt-3">
-            {s.steps
-              ? <p className="text-xs text-stone-600 leading-relaxed">{s.steps}</p>
-              : <p className="text-xs text-stone-400">No description yet.</p>}
-            {!!(s.ingredients || []).length && (
-              <ul className="mt-2 text-xs text-stone-500 space-y-0.5">
-                {s.ingredients.map((i, n) => (
-                  <li key={n}>{ingredientLine(i)}</li>
-                ))}
-              </ul>
-            )}
-            {s.url && (
-              <a href={s.url} target="_blank" rel="noreferrer"
-                 className="inline-flex items-center gap-1 text-xs mt-2" style={{ color: "#3f6b46" }}>
-                <Link2 size={11} /> recipe
-              </a>
-            )}
-          </div>
-        )}
-
-        <div className="flex gap-2 mt-2.5 flex-wrap">
-          <button onClick={onToggleInWeek}
-                  className="px-3 py-1.5 rounded-full text-xs font-medium border flex items-center gap-1"
-                  style={inWeek
-                    ? { backgroundColor: "#3f6b46", borderColor: "#3f6b46", color: "white" }
-                    : { backgroundColor: "white", borderColor: "#d6d3cd", color: "#57534e" }}>
-            {inWeek ? <><Check size={12} strokeWidth={3} /> In this week</> : <><Plus size={12} /> Add to this week</>}
-          </button>
-          <button onClick={onToggleTag}
-                  className="px-3 py-1.5 rounded-full text-xs font-medium border"
-                  style={dinner
-                    ? { backgroundColor: TAG_TONE, borderColor: TAG_TONE, color: "white" }
-                    : { backgroundColor: "white", borderColor: "#e7e5e0", color: "#a8a29e" }}>
-            {TAG_LABEL[DINNER_TAG]}
-          </button>
-          {open && (
-            <button onClick={onEdit}
-                    className="px-3 py-1.5 rounded-full text-xs font-medium border flex items-center gap-1"
-                    style={{ backgroundColor: "white", borderColor: "#d6d3cd", color: "#57534e" }}>
-              <Pencil size={12} /> Edit
-            </button>
+    <div className={`sticker px-4 py-3.5 ${open ? "bg-butter" : ""}`}>
+      <button onClick={() => setOpen((o) => !o)} aria-expanded={open} className="text-left w-full">
+        <div className="flex items-start justify-between gap-2">
+          <h3 className="font-display text-base font-semibold leading-tight">{s.title}</h3>
+          {open ? <ChevronDown size={20} className="shrink-0" />
+                : <ChevronRight size={20} className="shrink-0" />}
+        </div>
+        <div className="flex items-center gap-2 flex-wrap mt-1.5 text-xs font-extrabold">
+          <span className="inline-flex items-center gap-1.5"><VegDot veg={s.vegetable} /> {s.vegetable}</span>
+          <span>·</span>
+          <span>{TIERS[s.tier].label}</span>
+          {!!s.prepMinutes && (
+            <>
+              <span>·</span>
+              <span className="inline-flex items-center gap-1"><Clock size={12} /> {s.prepMinutes} min</span>
+            </>
+          )}
+          {last && (
+            <>
+              <span>·</span>
+              <span style={{ color: VERDICTS[last].tone }}>{VERDICTS[last].label.toLowerCase()}</span>
+            </>
           )}
         </div>
-      </div>
-      <button onClick={onRemove} className="p-2 -m-1 text-stone-300 shrink-0">
-        <Trash2 size={15} />
+        <p className="text-xs font-bold text-muted mt-1">
+          {s.lastMadeWeek ? `Made week of ${prettyWeek(s.lastMadeWeek)}` : "Not made yet"}
+          {(s.ratings || []).length > 1 && ` · ${s.ratings.length} times`}
+        </p>
       </button>
+
+      {open && (
+        <div className="mt-3">
+          {s.steps
+            ? <p className="text-[13px] font-semibold leading-relaxed">{s.steps}</p>
+            : <p className="text-[13px] font-bold text-muted">No description yet.</p>}
+          {!!(s.ingredients || []).length && (
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              {s.ingredients.map((i, n) => (
+                <span key={n} className="chip bg-white">{ingredientLine(i)}</span>
+              ))}
+            </div>
+          )}
+          {s.url && (
+            <a href={s.url} target="_blank" rel="noreferrer"
+               className="inline-flex items-center gap-1 text-xs font-extrabold mt-2 underline">
+              <Link2 size={12} /> recipe
+            </a>
+          )}
+        </div>
+      )}
+
+      <div className="flex gap-2 mt-3 flex-wrap items-center">
+        <button onClick={onToggleInWeek} aria-pressed={inWeek}
+                className={`btn text-sm ${inWeek ? "bg-berry text-white shadow-sticker-sm" : "bg-white text-ink"}`}>
+          {inWeek ? <><Check size={15} strokeWidth={3} /> In this week</> : <><Plus size={15} strokeWidth={2.6} /> Add to this week</>}
+        </button>
+        <button onClick={onToggleTag} aria-pressed={dinner}
+                className={`min-h-[44px] px-3 rounded-2xl border-2 text-[13px] font-extrabold ${
+                  dinner ? "bg-mint text-mintink border-ink" : "bg-transparent text-muted border-dim"
+                }`}>
+          {TAG_LABEL[DINNER_TAG]}
+        </button>
+        {open && (
+          <button onClick={onEdit} className="btn-plain text-sm">
+            <Pencil size={14} /> Edit
+          </button>
+        )}
+        <button onClick={onRemove} aria-label={`Delete ${s.title}`}
+                className="w-11 h-11 ml-auto flex items-center justify-center rounded-2xl border-2 border-ink bg-white shrink-0">
+          <Trash2 size={16} />
+        </button>
+      </div>
     </div>
   );
 }
@@ -1631,31 +1644,31 @@ function EditForm({ snack, onSave }) {
   return (
     <div className="space-y-3">
       <label className="block">
-        <span className="text-xs text-stone-500">Name</span>
+        <span className="text-xs font-extrabold text-muted">Name</span>
         <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Snack name"
-               className="mt-1 w-full px-3.5 py-3 rounded-lg bg-stone-50 text-sm outline-none" />
+               className="field mt-1" />
       </label>
       <label className="block">
-        <span className="text-xs text-stone-500">Description</span>
+        <span className="text-xs font-extrabold text-muted">Description</span>
         <textarea value={steps} onChange={(e) => setSteps(e.target.value)} rows={4}
                   placeholder="How to make it"
-                  className="mt-1 w-full px-3.5 py-3 rounded-lg bg-stone-50 text-sm outline-none resize-none" />
+                  className="field mt-1 resize-none" />
       </label>
       <label className="block">
-        <span className="text-xs text-stone-500">Time to prepare (minutes)</span>
+        <span className="text-xs font-extrabold text-muted">Time to prepare (minutes)</span>
         <input value={minutes} onChange={(e) => setMinutes(e.target.value)} placeholder="e.g. 10"
                type="number" inputMode="numeric" min="0"
-               className="mt-1 w-full px-3.5 py-3 rounded-lg bg-stone-50 text-sm outline-none" />
+               className="field mt-1" />
       </label>
       <label className="block">
-        <span className="text-xs text-stone-500">Ingredients (one per line)</span>
+        <span className="text-xs font-extrabold text-muted">Ingredients (one per line)</span>
         <textarea value={lines} onChange={(e) => setLines(e.target.value)} rows={6}
                   placeholder={"2 zucchini\n1 cup yogurt"}
-                  className="mt-1 w-full px-3.5 py-3 rounded-lg bg-stone-50 text-sm outline-none resize-none" />
+                  className="field mt-1 resize-none" />
       </label>
       <button onClick={save} disabled={!title.trim()}
-              className="w-full py-3 rounded-lg text-white text-sm font-medium"
-              style={{ backgroundColor: "#3f6b46", opacity: title.trim() ? 1 : 0.5 }}>
+              className="btn-primary w-full"
+              style={{ opacity: title.trim() ? 1 : 0.5 }}>
         Save changes
       </button>
     </div>
@@ -1683,23 +1696,24 @@ function ManualForm({ initialUrl, onSave }) {
   return (
     <div className="space-y-3">
       <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Snack name"
-             className="w-full px-3.5 py-3 rounded-lg bg-stone-50 text-sm outline-none" />
+             aria-label="Snack name" className="field" />
       <input value={veg} onChange={(e) => setVeg(e.target.value)} placeholder="Main vegetable"
-             className="w-full px-3.5 py-3 rounded-lg bg-stone-50 text-sm outline-none" />
-      <div className="flex gap-2">
+             aria-label="Main vegetable" className="field" />
+      <div className="flex gap-2 flex-wrap">
         {TIER_ORDER.map((t) => (
           <Pill key={t} active={tier === t} onClick={() => setTier(t)}>{TIERS[t].label}</Pill>
         ))}
       </div>
       <div className="flex gap-2">
-        <Pill active={dinner} tone={TAG_TONE} onClick={() => setDinner((v) => !v)}>{TAG_LABEL[DINNER_TAG]}</Pill>
+        <Pill active={dinner} onClick={() => setDinner((v) => !v)}>{TAG_LABEL[DINNER_TAG]}</Pill>
       </div>
       <textarea value={lines} onChange={(e) => setLines(e.target.value)} rows={5}
                 placeholder={"One ingredient per line\n2 zucchini\n1 cup yogurt"}
-                className="w-full px-3.5 py-3 rounded-lg bg-stone-50 text-sm outline-none resize-none" />
+                aria-label="Ingredients, one per line"
+                className="field resize-none" />
       <button onClick={save} disabled={!title.trim()}
-              className="w-full py-3 rounded-lg text-white text-sm font-medium"
-              style={{ backgroundColor: "#3f6b46", opacity: title.trim() ? 1 : 0.5 }}>
+              className="btn-primary w-full"
+              style={{ opacity: title.trim() ? 1 : 0.5 }}>
         Save to library
       </button>
     </div>
@@ -1741,21 +1755,21 @@ function HistoryView({ weeks, exposures, library }) {
   }
 
   return (
-    <div className="px-4">
+    <div className="px-5">
       <section className="mb-7">
-        <h2 className="text-sm font-semibold text-stone-700 mb-1">Exposures by vegetable</h2>
-        <p className="text-xs text-stone-400 leading-relaxed mb-3">
+        <h2 className="font-display text-xl font-semibold mb-1">Exposures by vegetable</h2>
+        <p className="text-[13px] font-semibold text-muted leading-relaxed mb-3">
           Acceptance often takes ten or more calm tries. A short bar isn't a no yet.
         </p>
-        <div className="bg-white rounded-xl border border-stone-200 divide-y divide-stone-100">
+        <div className="sticker divide-y-2 divide-line overflow-hidden">
           {vegStats.map((v) => (
             <div key={v.veg} className="px-4 py-3">
               <div className="flex items-center justify-between gap-3">
-                <span className="text-sm text-stone-700 inline-flex items-center gap-2 min-w-0">
+                <span className="text-[15px] font-extrabold inline-flex items-center gap-2 min-w-0">
                   <VegDot veg={v.veg} /> <span className="truncate">{v.veg}</span>
                 </span>
                 <span className="flex items-center gap-2 shrink-0">
-                  {v.warming && <span className="text-xs" style={{ color: "#2f7d55" }}>warming up</span>}
+                  {v.warming && <span className="chip bg-mint text-mintink">warming up</span>}
                   <ExposureMeter count={v.exposures} color={vegColor(v.veg)} />
                 </span>
               </div>
@@ -1765,27 +1779,27 @@ function HistoryView({ weeks, exposures, library }) {
       </section>
 
       <section>
-        <h2 className="text-sm font-semibold text-stone-700 mb-3">Past weeks</h2>
-        <div className="space-y-3">
+        <h2 className="font-display text-xl font-semibold mb-3">Past weeks</h2>
+        <div className="space-y-3.5">
           {past.map((w) => (
-            <div key={w.id} className="bg-white rounded-xl border border-stone-200 px-4 py-3.5">
-              <h3 className="text-xs font-medium text-stone-400 mb-2">{prettyWeek(w.id)}</h3>
+            <div key={w.id} className="sticker px-4 py-3.5">
+              <h3 className="inline-block bg-butter border-2 border-ink rounded-full px-3 py-0.5 font-display text-sm font-semibold mb-2.5">{prettyWeek(w.id)}</h3>
               <ul className="space-y-1.5">
                 {(w.entries || []).map((e, i) => (
-                  <li key={i} className="flex items-center justify-between gap-3 text-sm">
-                    <span className="text-stone-700 truncate">{e.title}</span>
+                  <li key={i} className="flex items-center justify-between gap-3 text-[15px]">
+                    <span className="font-bold truncate">{e.title}</span>
                     {e.verdict && (
-                      <span className="text-xs shrink-0" style={{ color: VERDICTS[e.verdict].tone }}>
+                      <span className={`chip shrink-0 text-ink ${VERDICTS[e.verdict].bg}`}>
                         {VERDICTS[e.verdict].label}
                       </span>
                     )}
                   </li>
                 ))}
-                {!(w.entries || []).length && <li className="text-sm text-stone-400">Nothing logged</li>}
+                {!(w.entries || []).length && <li className="text-sm font-bold text-muted">Nothing logged</li>}
               </ul>
             </div>
           ))}
-          {!past.length && <p className="text-sm text-stone-400">This is your first week.</p>}
+          {!past.length && <p className="text-sm font-bold text-muted">This is your first week.</p>}
         </div>
       </section>
     </div>
@@ -1811,38 +1825,40 @@ function LoginForm() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center px-4" style={{ backgroundColor: "#f7f7f4" }}>
-      <form onSubmit={submit} className="w-full bg-white rounded-2xl border border-stone-200 p-6" style={{ maxWidth: 360 }}>
-        <div className="flex items-center gap-2 mb-5" style={{ color: "#3f6b46" }}>
-          <Carrot size={22} />
-          <h1 className="text-lg font-semibold text-stone-800">Snack Planner</h1>
+    <div className="min-h-screen flex items-center justify-center px-5 bg-blush">
+      <form onSubmit={submit} className="sticker w-full p-6" style={{ maxWidth: 360 }}>
+        <div className="flex items-center gap-3 mb-5">
+          <span className="w-11 h-11 rounded-2xl bg-butter border-2 border-ink flex items-center justify-center">
+            <Carrot size={24} />
+          </span>
+          <h1 className="font-display text-2xl font-semibold">Snack Planner</h1>
         </div>
         {!supabaseConfigured && (
-          <p className="mb-3 text-xs" style={{ color: "#6b5a3a" }}>
+          <p className="mb-3 text-[13px] font-bold text-muted">
             Supabase isn't configured. Set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY.
           </p>
         )}
         <input
           type="email" autoComplete="email" required value={email}
-          onChange={(e) => setEmail(e.target.value)} placeholder="Email"
-          className="w-full px-3.5 py-3 rounded-lg bg-stone-50 text-sm outline-none mb-3"
+          onChange={(e) => setEmail(e.target.value)} placeholder="Email" aria-label="Email"
+          className="field mb-3"
         />
         <input
           type="password" autoComplete="current-password" required value={password}
-          onChange={(e) => setPassword(e.target.value)} placeholder="Password"
-          className="w-full px-3.5 py-3 rounded-lg bg-stone-50 text-sm outline-none"
+          onChange={(e) => setPassword(e.target.value)} placeholder="Password" aria-label="Password"
+          className="field"
         />
         {error && (
-          <div className="mt-3 rounded-lg px-3 py-2 text-xs" style={{ backgroundColor: "#fbf0f1", color: "#6d4148" }}>
+          <div className="mt-3 rounded-2xl border-2 border-ink bg-peach px-3.5 py-2.5 text-[13px] font-bold">
             {error}
           </div>
         )}
         <button
           type="submit" disabled={busy || !supabaseConfigured}
-          className="w-full mt-4 py-3 rounded-lg text-white text-sm font-medium flex items-center justify-center gap-2"
-          style={{ backgroundColor: "#3f6b46", opacity: busy || !supabaseConfigured ? 0.6 : 1 }}
+          className="btn-primary w-full mt-4"
+          style={{ opacity: busy || !supabaseConfigured ? 0.6 : 1 }}
         >
-          {busy ? <Loader2 size={15} className="animate-spin" /> : "Sign in"}
+          {busy ? <Loader2 size={16} className="animate-spin" /> : "Sign in"}
         </button>
       </form>
     </div>
@@ -1861,8 +1877,8 @@ export default function SnackPlanner() {
 
   if (session === undefined) {
     return (
-      <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: "#f7f7f4" }}>
-        <Loader2 className="animate-spin text-stone-400" size={22} />
+      <div className="min-h-screen flex items-center justify-center bg-blush">
+        <Loader2 className="animate-spin text-muted" size={22} />
       </div>
     );
   }

@@ -3,6 +3,7 @@
 Newest first. Add an entry for every user-visible or infrastructure change.
 
 ## 2026-10-27
+- Reskinned the app as "Peach Jam": blush background, cocoa outlines with flat offset shadows on cards ("stickers"), Fredoka headings and Nunito body text, a floating dark nav bar, and a berry accent. Colors live in `tailwind.config.js`; shared styles in `src/index.css`. No behavior or data changes. Week tab title is now "Our week".
 - Library edit form can now change the ingredients list. Fixed hand-entered ingredients starting with "g" (e.g. "2 garlic") being misread as grams.
 - Library snacks now expand to show description, ingredients and recipe link, and can be edited (name, description, prep time).
 

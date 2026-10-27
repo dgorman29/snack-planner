@@ -1,3 +1,42 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+@layer base {
+  body {
+    @apply bg-blush text-ink font-sans;
+  }
+  input, textarea, select {
+    @apply text-ink;
+  }
+  input::placeholder, textarea::placeholder {
+    @apply text-muted;
+    opacity: 0.8;
+  }
+  button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visible {
+    outline: 3px solid #C2385B;
+    outline-offset: 2px;
+  }
+}
+
+/* The shared "sticker" look: cocoa outline, flat offset shadow. */
+@layer components {
+  .sticker {
+    @apply bg-white border-2 border-ink rounded-[22px] shadow-sticker;
+  }
+  .btn {
+    @apply min-h-[44px] px-4 rounded-2xl border-2 border-ink font-display font-semibold text-[15px] inline-flex items-center justify-center gap-1.5;
+  }
+  .btn-primary {
+    @apply btn bg-berry text-white shadow-sticker-sm;
+  }
+  .btn-plain {
+    @apply btn bg-white text-ink;
+  }
+  .field {
+    @apply w-full min-h-[48px] px-4 py-3 rounded-2xl border-2 border-ink bg-white text-[15px] font-bold outline-none;
+  }
+  .chip {
+    @apply inline-flex items-center rounded-full px-2.5 py-1 text-xs font-extrabold;
+  }
+}
