@@ -3,6 +3,7 @@
 Newest first. Add an entry for every user-visible or infrastructure change.
 
 ## 2026-10-27
+- Library edit form can now change the ingredients list. Fixed hand-entered ingredients starting with "g" (e.g. "2 garlic") being misread as grams.
 - Library snacks now expand to show description, ingredients and recipe link, and can be edited (name, description, prep time).
 
 ## 2026-10-26

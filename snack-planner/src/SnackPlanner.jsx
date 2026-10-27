@@ -495,6 +495,23 @@ function rowLabel(row) {
   return parts.filter(Boolean).join(" ");
 }
 
+// One ingredient as a line of text: "2 tbsp olive oil".
+function ingredientLine(i) {
+  return [i.qty != null ? fmtQty(parseQty(i.qty)) : "", i.unit, i.name].filter(Boolean).join(" ");
+}
+
+// Parse "one ingredient per line" text. Lines that match an existing
+// ingredient exactly keep it as-is, so unchanged items keep their section.
+function parseIngredientLines(text, previous = []) {
+  const byLine = new Map(previous.map((i) => [ingredientLine(i), i]));
+  return text.split("\n").map((l) => l.trim()).filter(Boolean).map((l) => {
+    if (byLine.has(l)) return byLine.get(l);
+    const m = l.match(/^([\d./\s]+)?\s*(?:(tbsp|tsp|cups|cup|oz|lb|g|kg|can|head|slice|bunch)\b)?\s*(.+)$/i);
+    const name = (m && m[3] ? m[3] : l).trim();
+    return ing(name, m && m[1] ? parseQty(m[1]) : null, m && m[2] ? m[2].toLowerCase() : "", guessSection(name));
+  });
+}
+
 /* --------------------------------------------------------------- UI bits */
 
 function Pill({ active, onClick, children, tone }) {
@@ -1092,7 +1109,7 @@ function SnackCard({ snack, selected, prepped, onSelect, onPrepped }) {
               {!!(snack.ingredients || []).length && (
                 <ul className="mt-2 text-xs text-stone-500 space-y-0.5">
                   {snack.ingredients.map((i, n) => (
-                    <li key={n}>{[i.qty != null ? fmtQty(parseQty(i.qty)) : "", i.unit, i.name].filter(Boolean).join(" ")}</li>
+                    <li key={n}>{ingredientLine(i)}</li>
                   ))}
                 </ul>
               )}
@@ -1552,7 +1569,7 @@ function LibraryCard({ snack: s, inWeek, onToggleInWeek, onToggleTag, onEdit, on
             {!!(s.ingredients || []).length && (
               <ul className="mt-2 text-xs text-stone-500 space-y-0.5">
                 {s.ingredients.map((i, n) => (
-                  <li key={n}>{[i.qty != null ? fmtQty(parseQty(i.qty)) : "", i.unit, i.name].filter(Boolean).join(" ")}</li>
+                  <li key={n}>{ingredientLine(i)}</li>
                 ))}
               </ul>
             )}
@@ -1600,11 +1617,15 @@ function EditForm({ snack, onSave }) {
   const [title, setTitle] = useState(snack.title || "");
   const [steps, setSteps] = useState(snack.steps || "");
   const [minutes, setMinutes] = useState(snack.prepMinutes ? String(snack.prepMinutes) : "");
+  const [lines, setLines] = useState((snack.ingredients || []).map(ingredientLine).join("\n"));
 
   function save() {
     if (!title.trim()) return;
     const n = Math.round(Number(minutes));
-    onSave({ title: title.trim(), steps: steps.trim(), prepMinutes: n > 0 ? n : null });
+    onSave({
+      title: title.trim(), steps: steps.trim(), prepMinutes: n > 0 ? n : null,
+      ingredients: parseIngredientLines(lines, snack.ingredients || []),
+    });
   }
 
   return (
@@ -1626,6 +1647,12 @@ function EditForm({ snack, onSave }) {
                type="number" inputMode="numeric" min="0"
                className="mt-1 w-full px-3.5 py-3 rounded-lg bg-stone-50 text-sm outline-none" />
       </label>
+      <label className="block">
+        <span className="text-xs text-stone-500">Ingredients (one per line)</span>
+        <textarea value={lines} onChange={(e) => setLines(e.target.value)} rows={6}
+                  placeholder={"2 zucchini\n1 cup yogurt"}
+                  className="mt-1 w-full px-3.5 py-3 rounded-lg bg-stone-50 text-sm outline-none resize-none" />
+      </label>
       <button onClick={save} disabled={!title.trim()}
               className="w-full py-3 rounded-lg text-white text-sm font-medium"
               style={{ backgroundColor: "#3f6b46", opacity: title.trim() ? 1 : 0.5 }}>
@@ -1644,11 +1671,7 @@ function ManualForm({ initialUrl, onSave }) {
 
   function save() {
     if (!title.trim()) return;
-    const ingredients = lines.split("\n").map((l) => l.trim()).filter(Boolean).map((l) => {
-      const m = l.match(/^([\d./\s]+)?\s*(tbsp|tsp|cup|cups|oz|lb|g|kg|can|head|slice|bunch)?\s*(.+)$/i);
-      const name = (m && m[3] ? m[3] : l).trim();
-      return ing(name, m && m[1] ? parseQty(m[1]) : null, m && m[2] ? m[2].toLowerCase() : "", guessSection(name));
-    });
+    const ingredients = parseIngredientLines(lines);
     onSave({
       id: newId(), title: title.trim(), vegetable: veg.trim().toLowerCase() || "mixed",
       tier, prepMinutes: null, ingredients, steps: "", url: initialUrl || "",
