@@ -3,6 +3,9 @@
 Newest first. Add an entry for every user-visible or infrastructure change.
 
 ## 2026-10-27
+- Dinners view has a "Clear week" button (with a confirm step) that empties all planned dinners.
+- Snacks view has a "Chosen (N)" filter that lists every snack chosen for the current week.
+- Added weekday dinner planning. The Week tab now has a Dinners / Snacks toggle: Dinners shows a "Tonight" card plus a tile per weekday (Mon-Fri) with swap, clear, "Mark cooked" and "Fill empty days from my library". Recipes tagged Weekday dinner are dinners and are kept out of snack suggestions. Library has All / Weekday dinner / Snacks filters, "Add to a day" for dinners, and a dinner option when adding by URL. The shopping list and Log now cover dinners too. Week data gains a `dinners` map (no migration needed).
 - Reskinned the app as "Peach Jam": blush background, cocoa outlines with flat offset shadows on cards ("stickers"), Fredoka headings and Nunito body text, a floating dark nav bar, and a berry accent. Colors live in `tailwind.config.js`; shared styles in `src/index.css`. No behavior or data changes. Week tab title is now "Our week".
 - Library edit form can now change the ingredients list. Fixed hand-entered ingredients starting with "g" (e.g. "2 garlic") being misread as grams.
 - Library snacks now expand to show description, ingredients and recipe link, and can be edited (name, description, prep time).

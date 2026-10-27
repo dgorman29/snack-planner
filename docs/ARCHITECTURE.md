@@ -17,7 +17,7 @@ Browser (GitHub Pages)
 ## Storage model
 Three keys, each a JSON blob in `kv_store` (originally `window.storage` in the Claude Artifact version):
 - `snackplan:core:v1`: library, archived weeks, exposure counts. Library snacks may carry `tags: ["weekday-dinner"]`; snacks saved before tags existed simply have no `tags` field.
-- `snackplan:week:v1`: the current week (suggestions, picks, prepped, ratings, list state)
+- `snackplan:week:v1`: the current week (suggestions, picks, prepped, ratings, list state, and `dinners`: a map of weekday index, Monday = 0 to Friday = 4, to a library recipe id). A planned dinner is always also in `selected`, which is what the shopping list and Log read. Weeks saved before dinners existed have no `dinners` field and load as empty.
 - `snackplan:pantry:v1`: ingredients always on hand
 
 Row-level security allows only the `authenticated` role to select, insert and update (migration `0002_auth.sql`). Users sign in with Supabase Auth email/password; sign-ups are disabled in the dashboard and accounts are created by hand.

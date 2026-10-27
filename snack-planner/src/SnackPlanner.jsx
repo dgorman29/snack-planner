@@ -56,6 +56,20 @@ function prettyWeek(id) {
   return `${f(d)} – ${f(end)}`;
 }
 
+// Dinners are planned Monday to Friday; days are numbered from Monday = 0.
+const DINNER_DAYS = [0, 1, 2, 3, 4];
+const todayIndex = () => (new Date().getDay() + 6) % 7;
+
+function dayInfo(weekId, idx) {
+  const d = new Date(weekId + "T12:00:00");
+  d.setDate(d.getDate() + idx);
+  return {
+    short: d.toLocaleDateString(undefined, { weekday: "short" }),
+    long: d.toLocaleDateString(undefined, { weekday: "long" }),
+    date: d.getDate(),
+  };
+}
+
 function weeksBetween(aId, bId) {
   if (!aId || !bId) return 999;
   const a = new Date(aId + "T12:00:00");
@@ -622,6 +636,7 @@ const emptyWeek = (id) => ({
   id,
   suggestions: [],
   selected: [],
+  dinners: {},   // day index (Mon = 0) -> library snack id; every planned dinner is also in `selected`
   prepped: [],
   logs: {},
   libraryOnly: false,
@@ -630,8 +645,19 @@ const emptyWeek = (id) => ({
   manual: [],
 });
 
+// Take a recipe out of a week entirely: chosen, prepped, and any dinner day it held.
+function withoutRecipe(w, id) {
+  return {
+    ...w,
+    dinners: Object.fromEntries(Object.entries(w.dinners || {}).filter(([, v]) => v !== id)),
+    selected: w.selected.filter((x) => x !== id),
+    prepped: w.prepped.filter((x) => x !== id),
+  };
+}
+
 function SnackPlannerApp({ onSignOut }) {
   const [tab, setTab] = useState("week");
+  const [weekMode, setWeekMode] = useState("dinners"); // "dinners" | "snacks"
   const [ready, setReady] = useState(false);
   const [storageOk, setStorageOk] = useState(true);
 
@@ -723,6 +749,12 @@ function SnackPlannerApp({ onSignOut }) {
     return (week.selected || []).map((id) => byId.get(id)).filter(Boolean);
   }, [week.selected, library, suggestionPool]);
 
+  // Tagged recipes are dinners; everything else is a snack. Snack suggestions never include dinners.
+  const dinnerLibrary = useMemo(() => library.filter((s) => hasTag(s, DINNER_TAG)), [library]);
+  const snackLibrary = useMemo(() => library.filter((s) => !hasTag(s, DINNER_TAG)), [library]);
+  const plannedCount = DINNER_DAYS.filter((d) => library.some((s) => s.id === week.dinners?.[d])).length;
+  const snackCount = selectedSnacks.filter((s) => !hasTag(s, DINNER_TAG)).length;
+
   async function buildWeek({ append = false } = {}) {
     setError(null);
     const libOnly = week.libraryOnly;
@@ -732,14 +764,14 @@ function SnackPlannerApp({ onSignOut }) {
     const need = append ? 3 : total;
 
     if (libOnly) {
-      const picks = pickFromLibrary(library, week.id, need, exclude);
+      const picks = pickFromLibrary(snackLibrary, week.id, need, exclude);
       setWeek((w) => ({ ...w, suggestions: [...existing, ...picks] }));
       if (!picks.length) setError("Everything in the library was made too recently. Turn off library-only or add a recipe.");
       return;
     }
 
     const libCount = Math.ceil(need / 2);
-    const picks = pickFromLibrary(library, week.id, libCount, exclude);
+    const picks = pickFromLibrary(snackLibrary, week.id, libCount, exclude);
     setWeek((w) => ({ ...w, suggestions: [...existing, ...picks] }));
 
     setBusy("ideas");
@@ -828,9 +860,7 @@ function SnackPlannerApp({ onSignOut }) {
   function toggleInWeek(snack) {
     const inWeek = week.selected.includes(snack.id);
     setWeek((w) => {
-      if (inWeek) {
-        return { ...w, selected: w.selected.filter((x) => x !== snack.id), prepped: w.prepped.filter((x) => x !== snack.id) };
-      }
+      if (inWeek) return withoutRecipe(w, snack.id);
       const shown = w.suggestions.some((s) => s.id === snack.id);
       return {
         ...w,
@@ -841,14 +871,77 @@ function SnackPlannerApp({ onSignOut }) {
     flash(inWeek ? `Removed ${snack.title} from this week` : `Added ${snack.title} to this week`);
   }
 
+  /* ------- dinners ------- */
+
+  // Put a dinner on a day (replacing whatever was there). It joins `selected` so
+  // the shopping list and Log pick it up like any other chosen recipe.
+  function assignDinner(day, snack) {
+    setWeek((w) => {
+      const dinners = { ...(w.dinners || {}), [day]: snack.id };
+      const prev = (w.dinners || {})[day];
+      let next = { ...w, dinners };
+      if (!next.selected.includes(snack.id)) next = { ...next, selected: [...next.selected, snack.id] };
+      if (prev && prev !== snack.id && !Object.values(dinners).includes(prev)) {
+        next = { ...next, selected: next.selected.filter((x) => x !== prev), prepped: next.prepped.filter((x) => x !== prev) };
+      }
+      return next;
+    });
+  }
+
+  function clearDinner(day) {
+    setWeek((w) => {
+      const prev = (w.dinners || {})[day];
+      if (!prev) return w;
+      const dinners = { ...w.dinners };
+      delete dinners[day];
+      return Object.values(dinners).includes(prev)
+        ? { ...w, dinners }
+        : { ...w, dinners, selected: w.selected.filter((x) => x !== prev), prepped: w.prepped.filter((x) => x !== prev) };
+    });
+  }
+
+  // Empty every weekday. The dinners also leave the week's chosen and cooked lists;
+  // ratings already logged stay in History and on the recipes.
+  function clearDinnersWeek() {
+    setWeek((w) => {
+      const ids = new Set(Object.values(w.dinners || {}));
+      return {
+        ...w,
+        dinners: {},
+        selected: w.selected.filter((x) => !ids.has(x)),
+        prepped: w.prepped.filter((x) => !ids.has(x)),
+      };
+    });
+    flash("Cleared the week's dinners");
+  }
+
+  // Fill every empty weekday from the library's dinners, using the same cooldown and
+  // variety rules as snack suggestions.
+  function fillDinners() {
+    const dinners = week.dinners || {};
+    const empty = DINNER_DAYS.filter((d) => !library.some((s) => s.id === dinners[d]));
+    const planned = new Set(Object.values(dinners));
+    const picks = pickFromLibrary(dinnerLibrary, week.id, empty.length, planned);
+    if (!picks.length) {
+      setError("No dinners left to suggest. Everything tagged Weekday dinner is already planned or was made too recently. Add more dinners to the library.");
+      return;
+    }
+    setError(null);
+    setWeek((w) => {
+      const next = { ...(w.dinners || {}) };
+      const selected = [...w.selected];
+      empty.slice(0, picks.length).forEach((day, i) => {
+        next[day] = picks[i].id;
+        if (!selected.includes(picks[i].id)) selected.push(picks[i].id);
+      });
+      return { ...w, dinners: next, selected };
+    });
+    flash(picks.length < empty.length ? `Filled ${picks.length} of ${empty.length} empty days` : "Filled the empty days");
+  }
+
   function removeFromLibrary(id) {
     setLibrary((lib) => lib.filter((s) => s.id !== id));
-    setWeek((w) => ({
-      ...w,
-      selected: w.selected.filter((x) => x !== id),
-      prepped: w.prepped.filter((x) => x !== id),
-      suggestions: w.suggestions.filter((s) => s.id !== id),
-    }));
+    setWeek((w) => ({ ...withoutRecipe(w, id), suggestions: w.suggestions.filter((s) => s.id !== id) }));
   }
 
   const needsLogging = useMemo(
@@ -891,9 +984,14 @@ function SnackPlannerApp({ onSignOut }) {
                 {tab === "history" && "History"}
               </h1>
             </div>
-            {tab === "week" && week.selected.length > 0 && (
+            {tab === "week" && weekMode === "dinners" && (
               <span className="rounded-full bg-butter border-2 border-ink shadow-sticker-sm px-3 py-1.5 text-[13px] font-extrabold whitespace-nowrap">
-                {week.selected.length} chosen
+                {plannedCount} of {DINNER_DAYS.length} planned
+              </span>
+            )}
+            {tab === "week" && weekMode === "snacks" && snackCount > 0 && (
+              <span className="rounded-full bg-butter border-2 border-ink shadow-sticker-sm px-3 py-1.5 text-[13px] font-extrabold whitespace-nowrap">
+                {snackCount} snack{snackCount === 1 ? "" : "s"} chosen
               </span>
             )}
             {tab === "log" && needsLogging > 0 && (
@@ -919,8 +1017,13 @@ function SnackPlannerApp({ onSignOut }) {
 
         {tab === "week" && (
           <WeekView
+            mode={weekMode} setMode={setWeekMode}
             week={week} setWeek={setWeek} pool={suggestionPool} busy={busy}
+            library={library} dinnerLibrary={dinnerLibrary}
             onBuild={buildWeek} onToggleSelect={toggleSelected} onTogglePrepped={togglePrepped}
+            onAssignDinner={assignDinner} onClearDinner={clearDinner} onFillDinners={fillDinners}
+            onClearDinnersWeek={clearDinnersWeek}
+            onGoToLibrary={() => setTab("library")}
             selectedCount={week.selected.length} onGoToList={() => setTab("list")}
           />
         )}
@@ -944,7 +1047,8 @@ function SnackPlannerApp({ onSignOut }) {
         {tab === "library" && (
           <LibraryView
             library={library} onAdd={addToLibrary} onRemove={removeFromLibrary} onUpdate={updateLibrarySnack}
-            selectedIds={week.selected} onToggleInWeek={toggleInWeek} onToggleTag={toggleLibraryTag}
+            week={week} selectedIds={week.selected} onToggleInWeek={toggleInWeek} onToggleTag={toggleLibraryTag}
+            onAssignDinner={assignDinner}
             busy={busy} setBusy={setBusy} flash={flash}
           />
         )}
@@ -992,11 +1096,291 @@ function SnackPlannerApp({ onSignOut }) {
 
 /* -------------------------------------------------------------- week view */
 
-function WeekView({ week, setWeek, pool, busy, onBuild, onToggleSelect, onTogglePrepped, selectedCount, onGoToList }) {
+function WeekView({
+  mode, setMode, week, setWeek, pool, busy, library, dinnerLibrary,
+  onBuild, onToggleSelect, onTogglePrepped, onAssignDinner, onClearDinner, onFillDinners,
+  onClearDinnersWeek, onGoToLibrary, selectedCount, onGoToList,
+}) {
+  return (
+    <div>
+      <div className="px-5 mb-4">
+        <div className="flex p-[3px] bg-white border-2 border-ink rounded-[18px] shadow-sticker">
+          {[["dinners", "Dinners"], ["snacks", "Snacks"]].map(([id, label]) => (
+            <button key={id} onClick={() => setMode(id)} aria-pressed={mode === id}
+                    className={`flex-1 min-h-[44px] rounded-[14px] font-display text-base font-semibold ${
+                      mode === id ? "bg-berry text-white" : "text-ink"
+                    }`}>
+              {label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {mode === "dinners" ? (
+        <DinnersView
+          week={week} library={library} dinnerLibrary={dinnerLibrary}
+          onAssign={onAssignDinner} onClear={onClearDinner} onFill={onFillDinners}
+          onClearWeek={onClearDinnersWeek}
+          onTogglePrepped={onTogglePrepped} onGoToLibrary={onGoToLibrary}
+        />
+      ) : (
+        <SnacksView
+          week={week} setWeek={setWeek} pool={pool} library={library} busy={busy}
+          onBuild={onBuild} onToggleSelect={onToggleSelect} onTogglePrepped={onTogglePrepped}
+        />
+      )}
+
+      {selectedCount > 0 && (
+        <div className="px-5">
+          <button
+            onClick={onGoToList}
+            className="sticker w-full mt-4 min-h-[56px] px-4 font-display text-base font-semibold flex items-center gap-2.5"
+          >
+            <ShoppingBasket size={22} />
+            <span className="flex-1 text-left">See the shopping list</span>
+            <ChevronRight size={20} />
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ---- dinners: Tonight card, one tile per weekday, and a picker */
+
+const TILE_BG = ["bg-peach", "bg-mint", "bg-butter"];
+
+function DinnersView({ week, library, dinnerLibrary, onAssign, onClear, onFill, onClearWeek, onTogglePrepped, onGoToLibrary }) {
+  const [pickDay, setPickDay] = useState(null); // weekday being filled or swapped
+  const [confirmClear, setConfirmClear] = useState(false);
+  const byId = useMemo(() => new Map(library.map((s) => [s.id, s])), [library]);
+  const dinners = week.dinners || {};
+  const dinnerOf = (d) => byId.get(dinners[d]) || null;
+
+  const today = todayIndex();
+  const tonight = DINNER_DAYS.includes(today) ? today : null;
+  const tileDays = DINNER_DAYS.filter((d) => d !== tonight);
+  const emptyCount = DINNER_DAYS.filter((d) => !dinnerOf(d)).length;
+  const plannedCount = DINNER_DAYS.length - emptyCount;
+
+  function cookedNote(s) {
+    const v = week.logs?.[s.id];
+    return v ? <span className={`chip text-ink ${VERDICTS[v].bg}`}>{VERDICTS[v].label}</span> : null;
+  }
+
+  return (
+    <div className="px-5">
+      {!dinnerLibrary.length && (
+        <div className="sticker bg-butter p-4 mb-4">
+          <p className="text-[15px] font-bold leading-relaxed">
+            Dinners come from your library. Add a recipe and tag it Weekday dinner, then plan it here.
+          </p>
+          <button onClick={onGoToLibrary} className="btn-primary mt-3">Open the library</button>
+        </div>
+      )}
+
+      {!!dinnerLibrary.length && emptyCount > 0 && (
+        <button onClick={onFill} className="btn-plain shadow-sticker-sm w-full mb-4">
+          <Sparkles size={16} /> Fill empty days from my library
+        </button>
+      )}
+
+      {tonight !== null && (() => {
+        const s = dinnerOf(tonight);
+        const info = dayInfo(week.id, tonight);
+        const cooked = !!s && week.prepped.includes(s.id);
+        if (!s) {
+          return (
+            <article className="sticker bg-butter shadow-sticker-lg p-3.5 mb-4 flex flex-col gap-3">
+              <span className="self-start bg-white border-2 border-ink rounded-full px-3 py-0.5 font-display text-sm font-semibold">
+                Tonight · {info.short} {info.date}
+              </span>
+              <h2 className="font-display text-2xl font-semibold leading-tight">Nothing planned for tonight</h2>
+              <button onClick={() => setPickDay(tonight)} className="btn-primary w-full">Pick a dinner</button>
+            </article>
+          );
+        }
+        return (
+          <article className="sticker bg-butter shadow-sticker-lg p-3.5 mb-4 flex flex-col gap-2.5">
+            <div className="flex items-center justify-between gap-2">
+              <span className="bg-white border-2 border-ink rounded-full px-3 py-0.5 font-display text-sm font-semibold">
+                Tonight · {info.short} {info.date}
+              </span>
+              <TagChip />
+            </div>
+            <div className="flex items-center gap-3">
+              <div className="flex-1 min-w-0">
+                <h2 className="font-display text-2xl font-semibold leading-tight">{s.title}</h2>
+                <div className="flex items-center gap-2 flex-wrap mt-1.5 text-xs font-extrabold">
+                  {!!s.prepMinutes && <span className="inline-flex items-center gap-1"><Clock size={12} /> {s.prepMinutes} min</span>}
+                  {cookedNote(s)}
+                </div>
+              </div>
+              <svg width="64" height="64" viewBox="0 0 64 64" fill="none" stroke="#3D2B2B" strokeWidth="2.2"
+                   strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className="shrink-0">
+                <circle cx="32" cy="32" r="27" fill="#FFFFFF" /><circle cx="32" cy="32" r="17" />
+                <path d="M26 35c0-6 4-10 10-10 0 6-4 10-10 10z" fill="#9BCFA8" /><path d="M26 35l7-7" />
+              </svg>
+            </div>
+            <div className="flex gap-2">
+              <button onClick={() => setPickDay(tonight)} className="btn-plain flex-1">Swap dinner</button>
+              <button onClick={() => onTogglePrepped(s.id)} aria-pressed={cooked}
+                      className={`btn flex-1 ${cooked ? "bg-white text-ink" : "bg-berry text-white shadow-sticker-sm"}`}>
+                {cooked ? <><Check size={16} strokeWidth={3} /> Cooked</> : "Mark cooked"}
+              </button>
+            </div>
+          </article>
+        );
+      })()}
+
+      <div className="grid grid-cols-2 gap-3">
+        {tileDays.map((d) => {
+          const s = dinnerOf(d);
+          const info = dayInfo(week.id, d);
+          if (!s) {
+            return (
+              <button key={d} onClick={() => setPickDay(d)} aria-label={`Add a dinner for ${info.long}`}
+                      className="min-h-[148px] border-2 border-dashed border-dim rounded-[22px] p-2.5 pl-3 flex flex-col items-start gap-1.5 text-left">
+                <span className="bg-white border-2 border-ink rounded-full px-2.5 py-0.5 font-display text-sm font-semibold">
+                  {info.short} {info.date}
+                </span>
+                <span className="m-auto flex flex-col items-center gap-1.5 font-display text-[15px] font-semibold">
+                  <span className="w-10 h-10 rounded-full bg-berry text-white flex items-center justify-center">
+                    <Plus size={20} strokeWidth={2.6} />
+                  </span>
+                  Add a dinner
+                </span>
+              </button>
+            );
+          }
+          const cooked = week.prepped.includes(s.id);
+          return (
+            <article key={d}
+                     className={`min-h-[148px] border-2 border-ink rounded-[22px] shadow-sticker p-2.5 pl-3 flex flex-col gap-1.5 ${cooked ? "bg-white" : TILE_BG[d % TILE_BG.length]}`}>
+              <div className="flex items-center justify-between">
+                <span className={`border-2 border-ink rounded-full px-2.5 py-0.5 font-display text-sm font-semibold ${cooked ? "bg-peach" : "bg-white"}`}>
+                  {info.short} {info.date}
+                </span>
+                <CheckCircle on={cooked} onClick={() => onTogglePrepped(s.id)} size={40}
+                             label={cooked ? `Unmark ${info.long} dinner as cooked` : `Mark ${info.long} dinner as cooked`} />
+              </div>
+              <button onClick={() => setPickDay(d)} aria-label={`${s.title}, ${info.long}. Change dinner`}
+                      className="text-left font-display text-[15px] font-semibold leading-tight">
+                {s.title}
+              </button>
+              <div className="mt-auto text-xs font-extrabold flex items-center gap-1.5 flex-wrap">
+                {cookedNote(s) || (!!s.prepMinutes && <span>{s.prepMinutes} min</span>)}
+              </div>
+            </article>
+          );
+        })}
+      </div>
+
+      {plannedCount > 0 && (
+        confirmClear ? (
+          <div className="sticker bg-peach p-3.5 mt-4">
+            <p className="text-[15px] font-bold">
+              Clear {plannedCount === 1 ? "the planned dinner" : `all ${plannedCount} planned dinners`}?
+            </p>
+            <div className="flex gap-2 mt-3">
+              <button onClick={() => setConfirmClear(false)} className="btn-plain flex-1">Keep them</button>
+              <button onClick={() => { onClearWeek(); setConfirmClear(false); }} className="btn-primary flex-1">
+                Clear week
+              </button>
+            </div>
+          </div>
+        ) : (
+          <button onClick={() => setConfirmClear(true)}
+                  className="mt-4 w-full min-h-[48px] rounded-[18px] border-2 border-dashed border-dim font-display text-[15px] font-semibold flex items-center justify-center gap-1.5">
+            <Trash2 size={16} /> Clear week
+          </button>
+        )
+      )}
+
+      <Sheet
+        open={pickDay !== null} onClose={() => setPickDay(null)}
+        title={pickDay === null ? "" : `Dinner for ${dayInfo(week.id, pickDay).long}`}
+      >
+        {pickDay !== null && (
+          <DinnerPicker
+            dinners={dinnerLibrary} week={week} day={pickDay} current={dinnerOf(pickDay)}
+            onPick={(s) => { onAssign(pickDay, s); setPickDay(null); }}
+            onClear={() => { onClear(pickDay); setPickDay(null); }}
+            onGoToLibrary={() => { setPickDay(null); onGoToLibrary(); }}
+          />
+        )}
+      </Sheet>
+    </div>
+  );
+}
+
+function DinnerPicker({ dinners, week, day, current, onPick, onClear, onGoToLibrary }) {
+  if (!dinners.length) {
+    return (
+      <div className="text-center">
+        <p className="text-[15px] font-bold text-muted leading-relaxed">
+          No dinners in the library yet. Add a recipe and tag it Weekday dinner.
+        </p>
+        <button onClick={onGoToLibrary} className="btn-primary mt-4">Open the library</button>
+      </div>
+    );
+  }
+
+  // Dinners already planned on another day sink to the bottom.
+  const plannedDay = (id) => DINNER_DAYS.find((d) => (week.dinners || {})[d] === id);
+  const sorted = [...dinners].sort((a, b) => {
+    const pa = plannedDay(a.id) != null ? 1 : 0;
+    const pb = plannedDay(b.id) != null ? 1 : 0;
+    return pa - pb || a.title.localeCompare(b.title);
+  });
+
+  return (
+    <div className="space-y-2.5">
+      {sorted.map((s) => {
+        const pd = plannedDay(s.id);
+        const isCurrent = current && current.id === s.id;
+        const last = lastVerdict(s);
+        return (
+          <button key={s.id} onClick={() => onPick(s)}
+                  className={`sticker w-full text-left px-4 py-3 flex items-center gap-3 ${isCurrent ? "bg-mint" : ""}`}>
+            <div className="flex-1 min-w-0">
+              <span className="font-display text-base font-semibold leading-tight block">{s.title}</span>
+              <span className="flex items-center gap-2 flex-wrap mt-1 text-xs font-extrabold">
+                {!!s.prepMinutes && <span>{s.prepMinutes} min</span>}
+                {last && <span style={{ color: VERDICTS[last].tone }}>{VERDICTS[last].label.toLowerCase()} last time</span>}
+                {s.lastMadeWeek && <span className="text-muted">made week of {prettyWeek(s.lastMadeWeek)}</span>}
+              </span>
+            </div>
+            {isCurrent
+              ? <Check size={20} strokeWidth={3} />
+              : pd != null && <span className="chip bg-butter">{dayInfo(week.id, pd).short}</span>}
+          </button>
+        );
+      })}
+      {current && (
+        <button onClick={onClear} className="btn-plain w-full mt-2">
+          Clear {dayInfo(week.id, day).long}
+        </button>
+      )}
+    </div>
+  );
+}
+
+/* ---- snacks: the suggestion list */
+
+function SnacksView({ week, setWeek, pool: allPool, library, busy, onBuild, onToggleSelect, onTogglePrepped }) {
+  const pool = allPool.filter((s) => !hasTag(s, DINNER_TAG));
   const [tierFilter, setTierFilter] = useState([]);
-  const [dinnerOnly, setDinnerOnly] = useState(false);
-  const shown = pool.filter((s) =>
-    (!tierFilter.length || tierFilter.includes(s.tier)) && (!dinnerOnly || hasTag(s, DINNER_TAG)));
+  const [chosenOnly, setChosenOnly] = useState(false);
+
+  // Every snack chosen this week, even one a later "New set" dropped from the suggestions.
+  const chosen = useMemo(() => {
+    const byId = new Map([...library, ...allPool].map((s) => [s.id, s]));
+    return week.selected.map((id) => byId.get(id)).filter((s) => s && !hasTag(s, DINNER_TAG));
+  }, [week.selected, library, allPool]);
+
+  const base = chosenOnly ? chosen : pool;
+  const shown = base.filter((s) => !tierFilter.length || tierFilter.includes(s.tier));
 
   function toggleTier(t) {
     setTierFilter((f) => (f.includes(t) ? f.filter((x) => x !== t) : [...f, t]));
@@ -1030,23 +1414,24 @@ function WeekView({ week, setWeek, pool, busy, onBuild, onToggleSelect, onToggle
         </button>
       </div>
 
-      {pool.length > 0 && (
+      {(pool.length > 0 || chosen.length > 0) && (
         <div className="flex gap-2 mb-4 overflow-x-auto py-1 -mx-5 px-5">
+          <Pill active={chosenOnly} onClick={() => setChosenOnly((v) => !v)}>
+            Chosen ({chosen.length})
+          </Pill>
           {TIER_ORDER.map((t) => (
             <Pill key={t} active={tierFilter.includes(t)} onClick={() => toggleTier(t)}>
               {TIERS[t].label}
             </Pill>
           ))}
-          <Pill active={dinnerOnly} onClick={() => setDinnerOnly((v) => !v)}>
-            {TAG_LABEL[DINNER_TAG]}
-          </Pill>
         </div>
       )}
 
-      {!pool.length && (
+      {!base.length && (
         <Empty icon={Carrot}>
-          Nothing planned yet. Suggestions pull half from your library and half from new ideas,
-          skipping anything you made in the last few weeks.
+          {chosenOnly
+            ? "No snacks chosen for this week yet. Turn off the Chosen filter and tick the ones you want."
+            : "Nothing planned yet. Suggestions pull half from your library and half from new ideas, skipping anything you made in the last few weeks."}
         </Empty>
       )}
 
@@ -1068,23 +1453,12 @@ function WeekView({ week, setWeek, pool, busy, onBuild, onToggleSelect, onToggle
         </div>
       )}
 
-      {pool.length > 0 && busy !== "ideas" && (
+      {pool.length > 0 && !chosenOnly && busy !== "ideas" && (
         <button
           onClick={() => onBuild({ append: true })}
           className="w-full mt-4 min-h-[48px] rounded-[18px] border-2 border-dashed border-dim font-display text-[15px] font-semibold flex items-center justify-center gap-1.5"
         >
           <Plus size={16} /> More ideas
-        </button>
-      )}
-
-      {selectedCount > 0 && (
-        <button
-          onClick={onGoToList}
-          className="sticker w-full mt-4 min-h-[56px] px-4 font-display text-base font-semibold flex items-center gap-2.5"
-        >
-          <ShoppingBasket size={22} />
-          <span className="flex-1 text-left">{selectedCount} chosen — see the shopping list</span>
-          <ChevronRight size={20} />
         </button>
       )}
 
@@ -1219,7 +1593,7 @@ function ShoppingView({ snacks, week, setWeek, pantry, setPantry, flash, onGoToW
   const haveRows = rows.filter(isHave);
 
   const plainText = useMemo(() => {
-    const lines = [`Snacks — week of ${prettyWeek(week.id)}`, ""];
+    const lines = [`Shopping list — week of ${prettyWeek(week.id)}`, ""];
     for (const sec of SECTIONS) {
       const items = (grouped[sec] || []).filter((r) => !isHave(r) && !week.checked?.[r.key]);
       const manual = (week.manual || []).filter((m) => m.section === sec && !m.checked);
@@ -1253,10 +1627,10 @@ function ShoppingView({ snacks, week, setWeek, pantry, setPantry, flash, onGoToW
     return (
       <Empty icon={ShoppingBasket} action={
         <button onClick={onGoToWeek} className="btn-primary">
-          Pick this week's snacks
+          Plan this week
         </button>
       }>
-        Choose snacks on the week tab and the list builds itself, with repeat ingredients added up.
+        Plan dinners or choose snacks on the Week tab and the list builds itself, with repeat ingredients added up.
       </Empty>
     );
   }
@@ -1264,7 +1638,7 @@ function ShoppingView({ snacks, week, setWeek, pantry, setPantry, flash, onGoToW
   return (
     <div className="px-5">
       <div className="flex items-center justify-between mb-4 text-[13px] font-extrabold text-muted">
-        <span>{snacks.length} snack{snacks.length === 1 ? "" : "s"}</span>
+        <span>{snacks.length} recipe{snacks.length === 1 ? "" : "s"}</span>
         <button onClick={copy} className="btn-plain shadow-sticker-sm text-sm">
           <Copy size={15} /> Copy as text
         </button>
@@ -1291,7 +1665,7 @@ function ShoppingView({ snacks, week, setWeek, pantry, setPantry, flash, onGoToW
                           {rowLabel(r)}
                         </span>
                         {r.from.length > 1 && (
-                          <span className="text-xs font-bold text-muted">for {r.from.length} snacks</span>
+                          <span className="text-xs font-bold text-muted">for {r.from.length} recipes</span>
                         )}
                       </div>
                       <button onClick={() => toggleHave(r)} className="min-h-[44px] px-2.5 text-xs font-extrabold text-muted shrink-0">
@@ -1377,10 +1751,10 @@ function LogView({ week, pool, onTogglePrepped, onLog, onGoToWeek }) {
     return (
       <Empty icon={ClipboardCheck} action={
         <button onClick={onGoToWeek} className="btn-primary">
-          Pick this week's snacks
+          Plan this week
         </button>
       }>
-        Once you've picked snacks for the week, rate them here. Ratings steer next week's suggestions.
+        Once you've planned dinners or picked snacks for the week, rate them here. Ratings steer next week's suggestions.
       </Empty>
     );
   }
@@ -1390,15 +1764,19 @@ function LogView({ week, pool, onTogglePrepped, onLog, onGoToWeek }) {
       {chosen.map((s) => {
         const prepped = week.prepped.includes(s.id);
         const verdict = week.logs?.[s.id];
+        const dinner = hasTag(s, DINNER_TAG);
+        const done = dinner ? "cooked" : "prepped";
+        const dayIdx = DINNER_DAYS.find((d) => (week.dinners || {})[d] === s.id);
         return (
           <div key={s.id} className={`sticker p-3.5 ${prepped ? "" : "bg-peach"}`}>
             <div className="flex items-center gap-3">
               <CheckCircle on={prepped} onClick={() => onTogglePrepped(s.id)} size={36}
-                           label={prepped ? `Unmark ${s.title} as prepped` : `Mark ${s.title} as prepped`} />
+                           label={prepped ? `Unmark ${s.title} as ${done}` : `Mark ${s.title} as ${done}`} />
               <div className="min-w-0 flex-1">
                 <h3 className="font-display text-base font-semibold leading-tight">{s.title}</h3>
                 <p className="text-xs font-extrabold mt-1 inline-flex items-center gap-1.5">
                   <VegDot veg={s.vegetable} /> {s.vegetable}
+                  {dayIdx != null && <><span>·</span>{dayInfo(week.id, dayIdx).short} dinner</>}
                 </p>
               </div>
             </div>
@@ -1416,7 +1794,7 @@ function LogView({ week, pool, onTogglePrepped, onLog, onGoToWeek }) {
                 })}
               </div>
             ) : (
-              <p className="text-[13px] font-bold mt-3">Mark it prepped to rate it.</p>
+              <p className="text-[13px] font-bold mt-3">Mark it {done} to rate it.</p>
             )}
           </div>
         );
@@ -1427,16 +1805,19 @@ function LogView({ week, pool, onTogglePrepped, onLog, onGoToWeek }) {
 
 /* ----------------------------------------------------------- library view */
 
-function LibraryView({ library, onAdd, onRemove, onUpdate, selectedIds, onToggleInWeek, onToggleTag, busy, setBusy, flash }) {
+function LibraryView({ library, onAdd, onRemove, onUpdate, week, selectedIds, onToggleInWeek, onToggleTag, onAssignDinner, busy, setBusy, flash }) {
   const [q, setQ] = useState("");
-  const [dinnerOnly, setDinnerOnly] = useState(false);
+  const [kind, setKind] = useState("all"); // "all" | "dinner" | "snack"
   const [sheet, setSheet] = useState(null); // "url" | "manual"
   const [editing, setEditing] = useState(null); // snack being edited
+  const [dayFor, setDayFor] = useState(null); // dinner waiting for a day
   const [url, setUrl] = useState("");
+  const [importDinner, setImportDinner] = useState(false);
   const [importError, setImportError] = useState(null);
 
   const filtered = library.filter((s) => {
-    if (dinnerOnly && !hasTag(s, DINNER_TAG)) return false;
+    if (kind === "dinner" && !hasTag(s, DINNER_TAG)) return false;
+    if (kind === "snack" && hasTag(s, DINNER_TAG)) return false;
     if (!q.trim()) return true;
     const t = `${s.title} ${s.vegetable} ${(s.ingredients || []).map((i) => i.name).join(" ")}`.toLowerCase();
     return t.includes(q.toLowerCase());
@@ -1449,8 +1830,9 @@ function LibraryView({ library, onAdd, onRemove, onUpdate, selectedIds, onToggle
     setBusy("import");
     try {
       const snack = await importRecipe(link);
-      onAdd(snack);
+      onAdd({ ...snack, tags: importDinner ? [DINNER_TAG] : [] });
       setUrl("");
+      setImportDinner(false);
       setSheet(null);
     } catch (e) {
       setImportError("Couldn't read that page. Keep the link and fill in the details yourself.");
@@ -1464,8 +1846,8 @@ function LibraryView({ library, onAdd, onRemove, onUpdate, selectedIds, onToggle
       <div className="flex gap-2 mb-3">
         <div className="flex-1 min-w-0 flex items-center gap-2 bg-white border-2 border-ink rounded-2xl px-3.5 min-h-[48px]">
           <Search size={18} className="text-muted shrink-0" />
-          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search snacks or vegetables"
-                 aria-label="Search snacks or vegetables"
+          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search recipes or vegetables"
+                 aria-label="Search recipes or vegetables"
                  className="flex-1 min-w-0 py-2.5 text-[15px] font-bold outline-none bg-transparent" />
           {q && <button onClick={() => setQ("")} aria-label="Clear search" className="w-8 h-8 flex items-center justify-center text-muted"><X size={16} /></button>}
         </div>
@@ -1476,13 +1858,13 @@ function LibraryView({ library, onAdd, onRemove, onUpdate, selectedIds, onToggle
       </div>
 
       <div className="flex gap-2 mb-4">
-        <Pill active={dinnerOnly} onClick={() => setDinnerOnly((v) => !v)}>
-          {TAG_LABEL[DINNER_TAG]}
-        </Pill>
+        {[["all", "All"], ["dinner", TAG_LABEL[DINNER_TAG]], ["snack", "Snacks"]].map(([id, label]) => (
+          <Pill key={id} active={kind === id} onClick={() => setKind(id)}>{label}</Pill>
+        ))}
       </div>
 
       {!filtered.length && (
-        <Empty icon={BookMarked}>Nothing matches that. Try a vegetable name or clear the tag filter.</Empty>
+        <Empty icon={BookMarked}>Nothing matches that. Try a vegetable name or switch the filter.</Empty>
       )}
 
       <div className="space-y-3">
@@ -1490,13 +1872,39 @@ function LibraryView({ library, onAdd, onRemove, onUpdate, selectedIds, onToggle
           <LibraryCard
             key={s.id} snack={s}
             inWeek={(selectedIds || []).includes(s.id)}
-            onToggleInWeek={() => onToggleInWeek(s)}
+            onToggleInWeek={() => (
+              hasTag(s, DINNER_TAG) && !(selectedIds || []).includes(s.id) ? setDayFor(s) : onToggleInWeek(s)
+            )}
             onToggleTag={() => onToggleTag(s.id, DINNER_TAG)}
             onEdit={() => setEditing(s)}
             onRemove={() => onRemove(s.id)}
           />
         ))}
       </div>
+
+      <Sheet open={!!dayFor} onClose={() => setDayFor(null)} title="Which day?">
+        {dayFor && (
+          <div className="space-y-2.5">
+            {DINNER_DAYS.map((d) => {
+              const info = dayInfo(week.id, d);
+              const current = library.find((s) => s.id === (week.dinners || {})[d]);
+              return (
+                <button key={d}
+                        onClick={() => { onAssignDinner(d, dayFor); flash(`Added ${dayFor.title} to ${info.long}`); setDayFor(null); }}
+                        className="sticker w-full text-left px-4 py-3 flex items-center gap-3">
+                  <span className="bg-peach border-2 border-ink rounded-full px-2.5 py-0.5 font-display text-sm font-semibold shrink-0">
+                    {info.short} {info.date}
+                  </span>
+                  <span className="flex-1 min-w-0 truncate text-[15px] font-bold">
+                    {current ? current.title : "Free"}
+                  </span>
+                  {current && <span className="text-xs font-extrabold text-muted shrink-0">swap</span>}
+                </button>
+              );
+            })}
+          </div>
+        )}
+      </Sheet>
 
       <Sheet open={!!editing} onClose={() => setEditing(null)} title="Edit snack">
         {editing && (
@@ -1517,6 +1925,9 @@ function LibraryView({ library, onAdd, onRemove, onUpdate, selectedIds, onToggle
           aria-label="Recipe link"
           className="field"
         />
+        <div className="flex gap-2 mt-3">
+          <Pill active={importDinner} onClick={() => setImportDinner((v) => !v)}>{TAG_LABEL[DINNER_TAG]}</Pill>
+        </div>
         {importError && (
           <div className="mt-3 rounded-2xl border-2 border-ink bg-peach px-3.5 py-2.5 text-[13px] font-bold">
             {importError}
@@ -1604,7 +2015,8 @@ function LibraryCard({ snack: s, inWeek, onToggleInWeek, onToggleTag, onEdit, on
       <div className="flex gap-2 mt-3 flex-wrap items-center">
         <button onClick={onToggleInWeek} aria-pressed={inWeek}
                 className={`btn text-sm ${inWeek ? "bg-berry text-white shadow-sticker-sm" : "bg-white text-ink"}`}>
-          {inWeek ? <><Check size={15} strokeWidth={3} /> In this week</> : <><Plus size={15} strokeWidth={2.6} /> Add to this week</>}
+          {inWeek ? <><Check size={15} strokeWidth={3} /> In this week</>
+                  : <><Plus size={15} strokeWidth={2.6} /> {dinner ? "Add to a day" : "Add to this week"}</>}
         </button>
         <button onClick={onToggleTag} aria-pressed={dinner}
                 className={`min-h-[44px] px-3 rounded-2xl border-2 text-[13px] font-extrabold ${
