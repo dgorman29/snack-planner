@@ -3,6 +3,7 @@
 Newest first. Add an entry for every user-visible or infrastructure change.
 
 ## 2026-10-27
+- Adding a recipe by hand now has a recipe link field and the description ("how to make it") field; Edit also lets you change the link. Dinners no longer need a snack timing tag (optional for dinners, still required for snacks). Popups now open centered instead of sliding up from the bottom.
 - Dinners view has a "Clear week" button (with a confirm step) that empties all planned dinners.
 - Snacks view has a "Chosen (N)" filter that lists every snack chosen for the current week.
 - Added weekday dinner planning. The Week tab now has a Dinners / Snacks toggle: Dinners shows a "Tonight" card plus a tile per weekday (Mon-Fri) with swap, clear, "Mark cooked" and "Fill empty days from my library". Recipes tagged Weekday dinner are dinners and are kept out of snack suggestions. Library has All / Weekday dinner / Snacks filters, "Add to a day" for dinners, and a dinner option when adding by URL. The shopping list and Log now cover dinners too. Week data gains a `dinners` map (no migration needed).

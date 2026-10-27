@@ -603,16 +603,27 @@ function ExposureMeter({ count, target = EXPOSURE_TARGET, color }) {
   );
 }
 
+/* A dialog centered on the screen. It scrolls inside itself when the content is
+   taller than the viewport, so the header and close button stay in view. */
 function Sheet({ open, onClose, title, children }) {
+  useEffect(() => {
+    if (!open) return undefined;
+    const onKey = (e) => { if (e.key === "Escape") onClose(); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open, onClose]);
+
   if (!open) return null;
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center" style={{ backgroundColor: "rgba(61,43,43,0.5)" }}>
-      <div className="bg-blush w-full rounded-t-[28px] border-2 border-b-0 border-ink max-h-full overflow-y-auto" style={{ maxWidth: 560 }}>
-        <div className="sticky top-0 bg-blush flex items-center justify-between px-5 py-3 border-b-2 border-line">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: "rgba(61,43,43,0.5)" }}>
+      <div role="dialog" aria-modal="true" aria-label={title}
+           className="bg-blush w-full rounded-[28px] border-2 border-ink shadow-sticker-lg overflow-y-auto"
+           style={{ maxWidth: 520, maxHeight: "calc(100dvh - 2rem)" }}>
+        <div className="sticky top-0 z-10 bg-blush flex items-center justify-between px-5 py-3 border-b-2 border-line">
           <h2 className="font-display text-xl font-semibold">{title}</h2>
           <button onClick={onClose} aria-label="Close" className="w-11 h-11 -mr-2 flex items-center justify-center rounded-full"><X size={22} /></button>
         </div>
-        <div className="p-5 pb-8">{children}</div>
+        <div className="p-5">{children}</div>
       </div>
     </div>
   );
@@ -1492,7 +1503,7 @@ function SnackCard({ snack, selected, prepped, onSelect, onPrepped }) {
               <span className="inline-flex items-center gap-1">
                 <Clock size={12} />
                 {snack.tier === "grab" ? "grab and go"
-                  : snack.prepMinutes ? `${snack.prepMinutes} min` : TIERS[snack.tier].label.toLowerCase()}
+                  : snack.prepMinutes ? `${snack.prepMinutes} min` : (TIERS[snack.tier]?.label.toLowerCase() || "no prep time")}
               </span>
               {hasTag(snack, DINNER_TAG) && <TagChip />}
               {last && (
@@ -1830,7 +1841,8 @@ function LibraryView({ library, onAdd, onRemove, onUpdate, week, selectedIds, on
     setBusy("import");
     try {
       const snack = await importRecipe(link);
-      onAdd({ ...snack, tags: importDinner ? [DINNER_TAG] : [] });
+      // A dinner doesn't need the snack timing Claude guessed, so it starts without one.
+      onAdd({ ...snack, tags: importDinner ? [DINNER_TAG] : [], tier: importDinner ? null : snack.tier });
       setUrl("");
       setImportDinner(false);
       setSheet(null);
@@ -1970,8 +1982,12 @@ function LibraryCard({ snack: s, inWeek, onToggleInWeek, onToggleTag, onEdit, on
         </div>
         <div className="flex items-center gap-2 flex-wrap mt-1.5 text-xs font-extrabold">
           <span className="inline-flex items-center gap-1.5"><VegDot veg={s.vegetable} /> {s.vegetable}</span>
-          <span>·</span>
-          <span>{TIERS[s.tier].label}</span>
+          {TIERS[s.tier] && (
+            <>
+              <span>·</span>
+              <span>{TIERS[s.tier].label}</span>
+            </>
+          )}
           {!!s.prepMinutes && (
             <>
               <span>·</span>
@@ -2038,8 +2054,36 @@ function LibraryCard({ snack: s, inWeek, onToggleInWeek, onToggleTag, onEdit, on
   );
 }
 
+// A bare "example.com/recipe" would otherwise become a relative link.
+function cleanUrl(raw) {
+  const u = String(raw || "").trim();
+  return u && !/^https?:\/\//i.test(u) ? `https://${u}` : u;
+}
+
+/* The snack timing tag. Snacks need one; dinners don't, so for a dinner tapping the
+   selected tag again clears it. */
+function TierPills({ tier, setTier, optional }) {
+  return (
+    <div>
+      <div className="flex gap-2 flex-wrap">
+        {TIER_ORDER.map((t) => (
+          <Pill key={t} active={tier === t} onClick={() => setTier(tier === t && optional ? null : t)}>
+            {TIERS[t].label}
+          </Pill>
+        ))}
+      </div>
+      {optional && (
+        <p className="text-xs font-bold text-muted mt-1.5">Snack timing is optional for dinners. Tap the selected one to clear it.</p>
+      )}
+    </div>
+  );
+}
+
 function EditForm({ snack, onSave }) {
+  const dinner = hasTag(snack, DINNER_TAG);
   const [title, setTitle] = useState(snack.title || "");
+  const [url, setUrl] = useState(snack.url || "");
+  const [tier, setTier] = useState(snack.tier || null);
   const [steps, setSteps] = useState(snack.steps || "");
   const [minutes, setMinutes] = useState(snack.prepMinutes ? String(snack.prepMinutes) : "");
   const [lines, setLines] = useState((snack.ingredients || []).map(ingredientLine).join("\n"));
@@ -2048,7 +2092,8 @@ function EditForm({ snack, onSave }) {
     if (!title.trim()) return;
     const n = Math.round(Number(minutes));
     onSave({
-      title: title.trim(), steps: steps.trim(), prepMinutes: n > 0 ? n : null,
+      title: title.trim(), url: cleanUrl(url), steps: steps.trim(), prepMinutes: n > 0 ? n : null,
+      tier: dinner ? tier : tier || "assembly",
       ingredients: parseIngredientLines(lines, snack.ingredients || []),
     });
   }
@@ -2057,9 +2102,18 @@ function EditForm({ snack, onSave }) {
     <div className="space-y-3">
       <label className="block">
         <span className="text-xs font-extrabold text-muted">Name</span>
-        <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Snack name"
+        <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Recipe name"
                className="field mt-1" />
       </label>
+      <label className="block">
+        <span className="text-xs font-extrabold text-muted">Recipe link (optional)</span>
+        <input value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://"
+               type="url" inputMode="url" className="field mt-1" />
+      </label>
+      <div>
+        <span className="text-xs font-extrabold text-muted block mb-1">Snack timing</span>
+        <TierPills tier={tier} setTier={setTier} optional={dinner} />
+      </div>
       <label className="block">
         <span className="text-xs font-extrabold text-muted">Description</span>
         <textarea value={steps} onChange={(e) => setSteps(e.target.value)} rows={4}
@@ -2089,17 +2143,27 @@ function EditForm({ snack, onSave }) {
 
 function ManualForm({ initialUrl, onSave }) {
   const [title, setTitle] = useState("");
+  const [url, setUrl] = useState(initialUrl || "");
   const [veg, setVeg] = useState("");
   const [tier, setTier] = useState("assembly");
+  const [steps, setSteps] = useState("");
   const [lines, setLines] = useState("");
   const [dinner, setDinner] = useState(false);
+
+  // A dinner starts with no snack timing; turning the tag off gives a snack its default back.
+  function toggleDinner() {
+    const next = !dinner;
+    setDinner(next);
+    setTier(next ? null : tier || "assembly");
+  }
 
   function save() {
     if (!title.trim()) return;
     const ingredients = parseIngredientLines(lines);
     onSave({
       id: newId(), title: title.trim(), vegetable: veg.trim().toLowerCase() || "mixed",
-      tier, prepMinutes: null, ingredients, steps: "", url: initialUrl || "",
+      tier: dinner ? tier : tier || "assembly", prepMinutes: null, ingredients,
+      steps: steps.trim(), url: cleanUrl(url),
       tags: dinner ? [DINNER_TAG] : [],
       source: "manual", ratings: [], lastMadeWeek: null,
     });
@@ -2107,18 +2171,20 @@ function ManualForm({ initialUrl, onSave }) {
 
   return (
     <div className="space-y-3">
-      <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Snack name"
-             aria-label="Snack name" className="field" />
+      <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Recipe name"
+             aria-label="Recipe name" className="field" />
+      <input value={url} onChange={(e) => setUrl(e.target.value)} placeholder="Recipe link (optional)"
+             aria-label="Recipe link (optional)" type="url" inputMode="url" className="field" />
       <input value={veg} onChange={(e) => setVeg(e.target.value)} placeholder="Main vegetable"
              aria-label="Main vegetable" className="field" />
-      <div className="flex gap-2 flex-wrap">
-        {TIER_ORDER.map((t) => (
-          <Pill key={t} active={tier === t} onClick={() => setTier(t)}>{TIERS[t].label}</Pill>
-        ))}
-      </div>
       <div className="flex gap-2">
-        <Pill active={dinner} onClick={() => setDinner((v) => !v)}>{TAG_LABEL[DINNER_TAG]}</Pill>
+        <Pill active={dinner} onClick={toggleDinner}>{TAG_LABEL[DINNER_TAG]}</Pill>
       </div>
+      <TierPills tier={tier} setTier={setTier} optional={dinner} />
+      <textarea value={steps} onChange={(e) => setSteps(e.target.value)} rows={3}
+                placeholder="Description: how to make it"
+                aria-label="Description: how to make it"
+                className="field resize-none" />
       <textarea value={lines} onChange={(e) => setLines(e.target.value)} rows={5}
                 placeholder={"One ingredient per line\n2 zucchini\n1 cup yogurt"}
                 aria-label="Ingredients, one per line"
