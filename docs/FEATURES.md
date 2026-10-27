@@ -32,6 +32,8 @@ Current behavior of the app. Update this file whenever a feature is added, chang
 
 ## Library tab
 - 14 seeded snacks. Search by title, vegetable or ingredient. Delete snacks.
+- Tap a snack to expand it, like on the Week tab: shows the description (steps), ingredients and recipe link.
+- "Edit" (shown when a snack is expanded) changes its name, description and time to prepare in minutes. Changes show on the Week tab and shopping list too; past weeks in History keep the name the snack had then.
 - Add by URL: Claude reads the page and extracts ingredients and quantities.
 - Add by hand: title, main vegetable, tier, optional "Weekday dinner" tag, one ingredient per line.
 - "Weekday dinner" tag: toggle it on any snack from the library list; tagged snacks show it on their cards, and the Library and Week tabs have a filter pill for it. The tag is only a label and a filter; it does not change what gets suggested.

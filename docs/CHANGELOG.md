@@ -2,6 +2,9 @@
 
 Newest first. Add an entry for every user-visible or infrastructure change.
 
+## 2026-10-27
+- Library snacks now expand to show description, ingredients and recipe link, and can be edited (name, description, prep time).
+
 ## 2026-10-26
 - Added a "Weekday dinner" tag (toggle in the Library, filter pill on Library and Week tabs, option when adding by hand) and an "Add to this week" button on library snacks.
 - Added a web app manifest and placeholder cookie icons so Chrome can install Snack Planner as its own app (own `id`/`scope` of `/snack-planner/`, so it no longer clashes with other apps on the same github.io origin).

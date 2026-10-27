@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo, useRef, useCallback } from "react"
 import {
   Carrot, ShoppingBasket, ClipboardCheck, BookMarked, TrendingUp,
   Plus, Check, X, Link2, Loader2, Copy, Search, RefreshCw,
-  ChevronDown, ChevronRight, Trash2, Sparkles, Clock,
+  ChevronDown, ChevronRight, Trash2, Sparkles, Clock, Pencil,
 } from "lucide-react";
 import { supabase, supabaseConfigured } from "./lib/supabaseClient";
 
@@ -765,6 +765,12 @@ function SnackPlannerApp({ onSignOut }) {
     }));
   }
 
+  // Edits flow to the Week tab too, since suggestions are looked up by id.
+  function updateLibrarySnack(id, patch) {
+    setLibrary((lib) => lib.map((s) => (s.id === id ? { ...s, ...patch } : s)));
+    flash("Saved changes");
+  }
+
   // Pin a specific library snack to this week, and show it on the Week tab even
   // if it wasn't among the suggestions. Tapping again takes it back out.
   function toggleInWeek(snack) {
@@ -874,7 +880,7 @@ function SnackPlannerApp({ onSignOut }) {
 
         {tab === "library" && (
           <LibraryView
-            library={library} onAdd={addToLibrary} onRemove={removeFromLibrary}
+            library={library} onAdd={addToLibrary} onRemove={removeFromLibrary} onUpdate={updateLibrarySnack}
             selectedIds={week.selected} onToggleInWeek={toggleInWeek} onToggleTag={toggleLibraryTag}
             busy={busy} setBusy={setBusy} flash={flash}
           />
@@ -1386,10 +1392,11 @@ function LogView({ week, pool, onTogglePrepped, onLog, onGoToWeek }) {
 
 /* ----------------------------------------------------------- library view */
 
-function LibraryView({ library, onAdd, onRemove, selectedIds, onToggleInWeek, onToggleTag, busy, setBusy, flash }) {
+function LibraryView({ library, onAdd, onRemove, onUpdate, selectedIds, onToggleInWeek, onToggleTag, busy, setBusy, flash }) {
   const [q, setQ] = useState("");
   const [dinnerOnly, setDinnerOnly] = useState(false);
   const [sheet, setSheet] = useState(null); // "url" | "manual"
+  const [editing, setEditing] = useState(null); // snack being edited
   const [url, setUrl] = useState("");
   const [importError, setImportError] = useState(null);
 
@@ -1443,54 +1450,26 @@ function LibraryView({ library, onAdd, onRemove, selectedIds, onToggleInWeek, on
       )}
 
       <div className="space-y-2">
-        {filtered.map((s) => {
-          const avg = avgScore(s);
-          const last = lastVerdict(s);
-          const inWeek = (selectedIds || []).includes(s.id);
-          const dinner = hasTag(s, DINNER_TAG);
-          return (
-            <div key={s.id} className="bg-white rounded-xl border border-stone-200 px-4 py-3.5 flex items-start gap-3">
-              <div className="flex-1 min-w-0">
-                <h3 className="text-sm font-medium text-stone-800 leading-snug">{s.title}</h3>
-                <div className="flex items-center gap-2 flex-wrap mt-1 text-xs text-stone-500">
-                  <span className="inline-flex items-center gap-1.5"><VegDot veg={s.vegetable} /> {s.vegetable}</span>
-                  <span className="text-stone-300">·</span>
-                  <span>{TIERS[s.tier].label}</span>
-                  {last && (
-                    <>
-                      <span className="text-stone-300">·</span>
-                      <span style={{ color: VERDICTS[last].tone }}>{VERDICTS[last].label.toLowerCase()}</span>
-                    </>
-                  )}
-                </div>
-                <p className="text-xs text-stone-400 mt-1">
-                  {s.lastMadeWeek ? `Made week of ${prettyWeek(s.lastMadeWeek)}` : "Not made yet"}
-                  {(s.ratings || []).length > 1 && ` · ${s.ratings.length} times`}
-                </p>
-                <div className="flex gap-2 mt-2.5">
-                  <button onClick={() => onToggleInWeek(s)}
-                          className="px-3 py-1.5 rounded-full text-xs font-medium border flex items-center gap-1"
-                          style={inWeek
-                            ? { backgroundColor: "#3f6b46", borderColor: "#3f6b46", color: "white" }
-                            : { backgroundColor: "white", borderColor: "#d6d3cd", color: "#57534e" }}>
-                    {inWeek ? <><Check size={12} strokeWidth={3} /> In this week</> : <><Plus size={12} /> Add to this week</>}
-                  </button>
-                  <button onClick={() => onToggleTag(s.id, DINNER_TAG)}
-                          className="px-3 py-1.5 rounded-full text-xs font-medium border"
-                          style={dinner
-                            ? { backgroundColor: TAG_TONE, borderColor: TAG_TONE, color: "white" }
-                            : { backgroundColor: "white", borderColor: "#e7e5e0", color: "#a8a29e" }}>
-                    {TAG_LABEL[DINNER_TAG]}
-                  </button>
-                </div>
-              </div>
-              <button onClick={() => onRemove(s.id)} className="p-2 -m-1 text-stone-300 shrink-0">
-                <Trash2 size={15} />
-              </button>
-            </div>
-          );
-        })}
+        {filtered.map((s) => (
+          <LibraryCard
+            key={s.id} snack={s}
+            inWeek={(selectedIds || []).includes(s.id)}
+            onToggleInWeek={() => onToggleInWeek(s)}
+            onToggleTag={() => onToggleTag(s.id, DINNER_TAG)}
+            onEdit={() => setEditing(s)}
+            onRemove={() => onRemove(s.id)}
+          />
+        ))}
       </div>
+
+      <Sheet open={!!editing} onClose={() => setEditing(null)} title="Edit snack">
+        {editing && (
+          <EditForm
+            key={editing.id} snack={editing}
+            onSave={(patch) => { onUpdate(editing.id, patch); setEditing(null); }}
+          />
+        )}
+      </Sheet>
 
       <Sheet open={sheet === "url"} onClose={() => setSheet(null)} title="Add a recipe">
         <p className="text-sm text-stone-500 leading-relaxed mb-3">
@@ -1524,6 +1503,134 @@ function LibraryView({ library, onAdd, onRemove, selectedIds, onToggleInWeek, on
           onSave={(snack) => { onAdd(snack); setUrl(""); setSheet(null); }}
         />
       </Sheet>
+    </div>
+  );
+}
+
+function LibraryCard({ snack: s, inWeek, onToggleInWeek, onToggleTag, onEdit, onRemove }) {
+  const [open, setOpen] = useState(false);
+  const last = lastVerdict(s);
+  const dinner = hasTag(s, DINNER_TAG);
+
+  return (
+    <div className="bg-white rounded-xl border border-stone-200 px-4 py-3.5 flex items-start gap-3">
+      <div className="flex-1 min-w-0">
+        <button onClick={() => setOpen((o) => !o)} className="text-left w-full">
+          <div className="flex items-start justify-between gap-2">
+            <h3 className="text-sm font-medium text-stone-800 leading-snug">{s.title}</h3>
+            {open ? <ChevronDown size={16} className="text-stone-300 shrink-0 mt-0.5" />
+                  : <ChevronRight size={16} className="text-stone-300 shrink-0 mt-0.5" />}
+          </div>
+          <div className="flex items-center gap-2 flex-wrap mt-1 text-xs text-stone-500">
+            <span className="inline-flex items-center gap-1.5"><VegDot veg={s.vegetable} /> {s.vegetable}</span>
+            <span className="text-stone-300">·</span>
+            <span>{TIERS[s.tier].label}</span>
+            {!!s.prepMinutes && (
+              <>
+                <span className="text-stone-300">·</span>
+                <span className="inline-flex items-center gap-1"><Clock size={11} /> {s.prepMinutes} min</span>
+              </>
+            )}
+            {last && (
+              <>
+                <span className="text-stone-300">·</span>
+                <span style={{ color: VERDICTS[last].tone }}>{VERDICTS[last].label.toLowerCase()}</span>
+              </>
+            )}
+          </div>
+          <p className="text-xs text-stone-400 mt-1">
+            {s.lastMadeWeek ? `Made week of ${prettyWeek(s.lastMadeWeek)}` : "Not made yet"}
+            {(s.ratings || []).length > 1 && ` · ${s.ratings.length} times`}
+          </p>
+        </button>
+
+        {open && (
+          <div className="mt-3">
+            {s.steps
+              ? <p className="text-xs text-stone-600 leading-relaxed">{s.steps}</p>
+              : <p className="text-xs text-stone-400">No description yet.</p>}
+            {!!(s.ingredients || []).length && (
+              <ul className="mt-2 text-xs text-stone-500 space-y-0.5">
+                {s.ingredients.map((i, n) => (
+                  <li key={n}>{[i.qty != null ? fmtQty(parseQty(i.qty)) : "", i.unit, i.name].filter(Boolean).join(" ")}</li>
+                ))}
+              </ul>
+            )}
+            {s.url && (
+              <a href={s.url} target="_blank" rel="noreferrer"
+                 className="inline-flex items-center gap-1 text-xs mt-2" style={{ color: "#3f6b46" }}>
+                <Link2 size={11} /> recipe
+              </a>
+            )}
+          </div>
+        )}
+
+        <div className="flex gap-2 mt-2.5 flex-wrap">
+          <button onClick={onToggleInWeek}
+                  className="px-3 py-1.5 rounded-full text-xs font-medium border flex items-center gap-1"
+                  style={inWeek
+                    ? { backgroundColor: "#3f6b46", borderColor: "#3f6b46", color: "white" }
+                    : { backgroundColor: "white", borderColor: "#d6d3cd", color: "#57534e" }}>
+            {inWeek ? <><Check size={12} strokeWidth={3} /> In this week</> : <><Plus size={12} /> Add to this week</>}
+          </button>
+          <button onClick={onToggleTag}
+                  className="px-3 py-1.5 rounded-full text-xs font-medium border"
+                  style={dinner
+                    ? { backgroundColor: TAG_TONE, borderColor: TAG_TONE, color: "white" }
+                    : { backgroundColor: "white", borderColor: "#e7e5e0", color: "#a8a29e" }}>
+            {TAG_LABEL[DINNER_TAG]}
+          </button>
+          {open && (
+            <button onClick={onEdit}
+                    className="px-3 py-1.5 rounded-full text-xs font-medium border flex items-center gap-1"
+                    style={{ backgroundColor: "white", borderColor: "#d6d3cd", color: "#57534e" }}>
+              <Pencil size={12} /> Edit
+            </button>
+          )}
+        </div>
+      </div>
+      <button onClick={onRemove} className="p-2 -m-1 text-stone-300 shrink-0">
+        <Trash2 size={15} />
+      </button>
+    </div>
+  );
+}
+
+function EditForm({ snack, onSave }) {
+  const [title, setTitle] = useState(snack.title || "");
+  const [steps, setSteps] = useState(snack.steps || "");
+  const [minutes, setMinutes] = useState(snack.prepMinutes ? String(snack.prepMinutes) : "");
+
+  function save() {
+    if (!title.trim()) return;
+    const n = Math.round(Number(minutes));
+    onSave({ title: title.trim(), steps: steps.trim(), prepMinutes: n > 0 ? n : null });
+  }
+
+  return (
+    <div className="space-y-3">
+      <label className="block">
+        <span className="text-xs text-stone-500">Name</span>
+        <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Snack name"
+               className="mt-1 w-full px-3.5 py-3 rounded-lg bg-stone-50 text-sm outline-none" />
+      </label>
+      <label className="block">
+        <span className="text-xs text-stone-500">Description</span>
+        <textarea value={steps} onChange={(e) => setSteps(e.target.value)} rows={4}
+                  placeholder="How to make it"
+                  className="mt-1 w-full px-3.5 py-3 rounded-lg bg-stone-50 text-sm outline-none resize-none" />
+      </label>
+      <label className="block">
+        <span className="text-xs text-stone-500">Time to prepare (minutes)</span>
+        <input value={minutes} onChange={(e) => setMinutes(e.target.value)} placeholder="e.g. 10"
+               type="number" inputMode="numeric" min="0"
+               className="mt-1 w-full px-3.5 py-3 rounded-lg bg-stone-50 text-sm outline-none" />
+      </label>
+      <button onClick={save} disabled={!title.trim()}
+              className="w-full py-3 rounded-lg text-white text-sm font-medium"
+              style={{ backgroundColor: "#3f6b46", opacity: title.trim() ? 1 : 0.5 }}>
+        Save changes
+      </button>
     </div>
   );
 }
