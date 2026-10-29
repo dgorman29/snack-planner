@@ -44,7 +44,7 @@ Function secrets (Supabase, not in the repo): `ANTHROPIC_API_KEY`, optional `ALL
 
 ## Deploying
 - **Frontend:** push to `main`. The workflow builds `snack-planner/` and publishes `dist`. Vite `base` is `/snack-planner/`.
-- **Function:** `supabase functions deploy snack-ai --no-verify-jwt` from the repo root.
+- **Function:** push a change under `supabase/functions/` to `main` and `.github/workflows/deploy-functions.yml` deploys `snack-ai` (also runnable by hand from the Actions tab). It needs a `SUPABASE_ACCESS_TOKEN` repository secret (Supabase dashboard > Account > Access Tokens) and reads the project ref from the `VITE_SUPABASE_URL` secret. By hand: `supabase functions deploy snack-ai --no-verify-jwt` from the repo root.
 - **Schema:** add a new file under `supabase/migrations/` and run `supabase db push` from the repo root.
 
 ## Gotchas

@@ -3,6 +3,7 @@
 Newest first. Add an entry for every user-visible or infrastructure change.
 
 ## 2026-10-29
+- Added a GitHub Actions workflow that deploys the `snack-ai` function when it changes on `main` (needs a `SUPABASE_ACCESS_TOKEN` secret).
 - Add a recipe from a photo (up to 4): Claude transcribes it. `snack-ai` now accepts an `images` array and must be redeployed.
 - Hand-typed ingredients are sorted into shopping-list sections by Claude (once per name, remembered in `snackplan:core:v1` as `sections`), fixing keyword misfires like "butternut squash" landing in dairy.
 
