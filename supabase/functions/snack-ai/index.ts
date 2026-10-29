@@ -1,5 +1,5 @@
-// Proxies the two AI calls the frontend needs (idea generation and recipe
-// import by URL) to the Anthropic API, keeping the real API key server-side
+// Proxies the frontend's AI calls (idea generation, recipe import by URL or
+// photo, ingredient sorting) to the Anthropic API, keeping the real API key server-side
 // as a Supabase secret instead of shipping it in browser code.
 //
 // Deploy:   supabase functions deploy snack-ai
@@ -8,6 +8,10 @@
 
 const ANTHROPIC_API_KEY = Deno.env.get("ANTHROPIC_API_KEY");
 const ALLOWED_ORIGIN = Deno.env.get("ALLOWED_ORIGIN") || "*";
+
+// Photos arrive already shrunk and JPEG-encoded by the frontend.
+const IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp", "image/gif"];
+const MAX_IMAGES = 4;
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": ALLOWED_ORIGIN,
@@ -52,7 +56,7 @@ Deno.serve(async (req) => {
     });
   }
 
-  const { prompt, search } = payload || {};
+  const { prompt, search, images } = payload || {};
   if (typeof prompt !== "string" || !prompt.trim()) {
     return new Response(JSON.stringify({ error: "Missing prompt" }), {
       status: 400,
@@ -60,10 +64,28 @@ Deno.serve(async (req) => {
     });
   }
 
+  const imageList = images ?? [];
+  const imagesOk = Array.isArray(imageList) && imageList.length <= MAX_IMAGES &&
+    imageList.every((i) => i && IMAGE_TYPES.includes(i.media_type) && typeof i.data === "string" && i.data);
+  if (!imagesOk) {
+    return new Response(JSON.stringify({ error: `Send up to ${MAX_IMAGES} JPEG, PNG, WebP or GIF images` }), {
+      status: 400,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+
+  // With photos, the message is the images followed by the prompt text.
+  const content = imageList.length
+    ? [
+      ...imageList.map((i) => ({ type: "image", source: { type: "base64", media_type: i.media_type, data: i.data } })),
+      { type: "text", text: prompt },
+    ]
+    : prompt;
+
   const body = {
     model: "claude-sonnet-4-6",
     max_tokens: 2500,
-    messages: [{ role: "user", content: prompt }],
+    messages: [{ role: "user", content }],
   };
   if (search) body.tools = [{ type: "web_search_20250305", name: "web_search" }];
 

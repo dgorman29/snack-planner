@@ -2,6 +2,10 @@
 
 Newest first. Add an entry for every user-visible or infrastructure change.
 
+## 2026-10-29
+- Add a recipe from a photo (up to 4): Claude transcribes it. `snack-ai` now accepts an `images` array and must be redeployed.
+- Hand-typed ingredients are sorted into shopping-list sections by Claude (once per name, remembered in `snackplan:core:v1` as `sections`), fixing keyword misfires like "butternut squash" landing in dairy.
+
 ## 2026-10-27
 - Adding a recipe by hand now has a recipe link field and the description ("how to make it") field; Edit also lets you change the link. Dinners no longer need a snack timing tag (optional for dinners, still required for snacks). Popups now open centered instead of sliding up from the bottom.
 - Dinners view has a "Clear week" button (with a confirm step) that empties all planned dinners.

@@ -11,12 +11,12 @@ Browser (GitHub Pages)
 |---|---|---|
 | Frontend | `snack-planner/` (Vite + React + Tailwind) | The whole app is `src/SnackPlanner.jsx` |
 | Database | Supabase project `oobnfidfqihesilvhoxv` | One table, `kv_store(key text pk, value jsonb, updated_at)` |
-| AI proxy | `supabase/functions/snack-ai/index.ts` | Checks the caller is a signed-in user (`/auth/v1/user`), holds `ANTHROPIC_API_KEY`, forwards prompts |
+| AI proxy | `supabase/functions/snack-ai/index.ts` | Checks the caller is a signed-in user (`/auth/v1/user`), holds `ANTHROPIC_API_KEY`, forwards prompts plus optional `images` (up to 4 base64 JPEG/PNG/WebP/GIF, sent before the prompt text) |
 | Hosting | GitHub Pages | Built and deployed by `.github/workflows/deploy.yml` on push to `main` |
 
 ## Storage model
 Three keys, each a JSON blob in `kv_store` (originally `window.storage` in the Claude Artifact version):
-- `snackplan:core:v1`: library, archived weeks, exposure counts. Library snacks may carry `tags: ["weekday-dinner"]`; snacks saved before tags existed simply have no `tags` field.
+- `snackplan:core:v1`: library, archived weeks, exposure counts. Library snacks may carry `tags: ["weekday-dinner"]`; snacks saved before tags existed simply have no `tags` field. `sections` maps a lowercased ingredient name to the shopping-list section Claude chose for it (absent in older saves). A hand-typed ingredient carries `guessed: true` until it has been sorted.
 - `snackplan:week:v1`: the current week (suggestions, picks, prepped, ratings, list state, and `dinners`: a map of weekday index, Monday = 0 to Friday = 4, to a library recipe id). A planned dinner is always also in `selected`, which is what the shopping list and Log read. Weeks saved before dinners existed have no `dinners` field and load as empty.
 - `snackplan:pantry:v1`: ingredients always on hand
 

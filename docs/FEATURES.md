@@ -44,6 +44,7 @@ A Dinners / Snacks toggle at the top. The header badge shows "N of 5 planned" on
 ## List tab
 - Built from every chosen recipe, dinners and snacks together. Duplicate ingredients (same name and unit) are summed, and rows used by several recipes say "for N recipes".
 - Grouped by produce, dairy, pantry, frozen, other.
+- Sections for hand-typed ingredients (Add by hand, or new lines in Edit): saved first with a keyword guess, then Claude sorts any names it hasn't seen and the app remembers the answer, so each name is asked about once. If Claude can't be reached the keyword guess stays. Recipes from AI ideas, a link or a photo get their sections from Claude when they're created.
 - Check items off, mark "have it" (remembered in the pantry list), add manual items, and "Copy as text".
 
 ## Log tab
@@ -52,7 +53,8 @@ A Dinners / Snacks toggle at the top. The header badge shows "N of 5 planned" on
 ## Library tab
 - 14 seeded snacks (no seeded dinners). Search by title, vegetable or ingredient. Filter pills: All, Weekday dinner, Snacks. Delete recipes.
 - Tap a recipe to expand it: shows the description (steps), ingredients and recipe link.
-- "Edit" (shown when a recipe is expanded) changes its name, recipe link, snack timing, description, time to prepare in minutes, and ingredients (one per line, e.g. "2 tbsp olive oil"; unchanged lines keep their shopping-list section, new ones are sorted automatically). Changes show on the Week tab and shopping list too; past weeks in History keep the name the recipe had then.
+- "Edit" (shown when a recipe is expanded) changes its name, recipe link, snack timing, description, time to prepare in minutes, and ingredients (one per line, e.g. "2 tbsp olive oil"; unchanged lines keep their shopping-list section, new ones are sorted by Claude, see List tab). Changes show on the Week tab and shopping list too; past weeks in History keep the name the recipe had then.
+- Add from a photo: "From a photo" on the Add a recipe sheet takes up to 4 photos (camera or gallery) of a cookbook page, recipe card or handwritten note. Photos are shrunk on the phone, then Claude transcribes the recipe with its quantities. The same "Weekday dinner" pill applies.
 - Add by URL: Claude reads the page and extracts ingredients and quantities. A "Weekday dinner" pill on that sheet tags the import as a dinner and starts it without a snack timing.
 - Add by hand: name, optional recipe link (a link typed on the first screen carries over; a bare "example.com/x" gets https:// added), main vegetable, optional "Weekday dinner" tag, snack timing, description (how to make it) and one ingredient per line.
 - Snack timing (Grab and go, 2-3 min, Weekend batch) is required for snacks and optional for dinners: turning the Weekday dinner tag on clears it, and for a dinner tapping the selected timing again clears it (also in Edit). A dinner with no timing simply shows no timing label.

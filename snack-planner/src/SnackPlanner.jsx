@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo, useRef, useCallback } from "react"
 import {
   Carrot, ShoppingBasket, ClipboardCheck, BookMarked, TrendingUp,
   Plus, Check, X, Link2, Loader2, Copy, Search, RefreshCw,
-  ChevronDown, ChevronRight, Trash2, Sparkles, Clock, Pencil,
+  ChevronDown, ChevronRight, Trash2, Sparkles, Clock, Pencil, Camera,
 } from "lucide-react";
 import { supabase, supabaseConfigured } from "./lib/supabaseClient";
 
@@ -293,7 +293,7 @@ function pickFromLibrary(library, currentWeekId, count, exclude = new Set()) {
    sandbox, which injects auth for you. Here we call a Supabase Edge
    Function instead, which holds the real Anthropic API key server-side. */
 
-async function callClaude(prompt, { search = false } = {}) {
+async function callClaude(prompt, { search = false, images } = {}) {
   const url = import.meta.env.VITE_SNACK_AI_URL;
   if (!url) throw new Error("AI features aren't configured (missing VITE_SNACK_AI_URL)");
 
@@ -306,7 +306,7 @@ async function callClaude(prompt, { search = false } = {}) {
       "Content-Type": "application/json",
       Authorization: `Bearer ${session.access_token}`,
     },
-    body: JSON.stringify({ prompt, search }),
+    body: JSON.stringify({ prompt, search, images }),
   });
   if (!res.ok) throw new Error(`Request failed (${res.status})`);
   const data = await res.json();
@@ -446,6 +446,68 @@ Shape:
   return snack;
 }
 
+// Shrink a photo before sending it: Claude reads ~1568px on the long edge
+// at most, and a full-size phone photo would make the request slow and large.
+function photoForClaude(file, maxEdge = 1568) {
+  return new Promise((resolve, reject) => {
+    const src = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      URL.revokeObjectURL(src);
+      const scale = Math.min(1, maxEdge / Math.max(img.naturalWidth, img.naturalHeight));
+      const canvas = document.createElement("canvas");
+      canvas.width = Math.round(img.naturalWidth * scale);
+      canvas.height = Math.round(img.naturalHeight * scale);
+      canvas.getContext("2d").drawImage(img, 0, 0, canvas.width, canvas.height);
+      const data = canvas.toDataURL("image/jpeg", 0.85).split(",")[1];
+      resolve({ media_type: "image/jpeg", data });
+    };
+    img.onerror = () => { URL.revokeObjectURL(src); reject(new Error("Couldn't open that image")); };
+    img.src = src;
+  });
+}
+
+const MAX_PHOTOS = 4;
+
+async function importRecipePhoto(images) {
+  const prompt = `The attached photo${images.length > 1 ? "s show" : " shows"} a recipe (a cookbook page, recipe card or handwritten note).
+Transcribe it faithfully, keeping the quantities so they can feed a shopping list. Don't invent ingredients that aren't shown.
+If no image is attached, or it doesn't show a recipe, return {"error":"no recipe"} instead.
+
+${JSON_RULES}
+
+Shape:
+{"title":"","vegetable":"the main vegetable it's built around","tier":"grab|assembly|batch","prepMinutes":20,"steps":"the method, condensed to a few sentences","ingredients":[{"name":"zucchini","qty":2,"unit":"","section":"produce"}]}`;
+
+  const text = await callClaude(prompt, { images });
+  const parsed = extractJson(text);
+  const obj = Array.isArray(parsed) ? parsed[0] : parsed;
+  if (!obj || obj.error) throw new Error("No recipe found in the photo");
+  const snack = coerceSnack(obj);
+  snack.source = "photo";
+  return snack;
+}
+
+// Remembered shopping-list sections are keyed by the plain lowercased name.
+const sectionKey = (name) => String(name || "").trim().toLowerCase().replace(/\s+/g, " ");
+
+async function sortIngredients(names) {
+  const prompt = `Sort each grocery ingredient into the shopping-list section where you'd find it in a US supermarket.
+
+${names.map((n) => `- ${n}`).join("\n")}
+
+Return ONLY raw JSON, no commentary: an object mapping each ingredient exactly as written above to one of: produce, dairy, pantry, frozen, other.
+Fresh fruit, vegetables and herbs are produce; eggs are dairy; canned, dried and shelf-stable goods are pantry; meat and fish are other unless frozen.`;
+
+  const parsed = extractJson(await callClaude(prompt));
+  const out = {};
+  for (const [name, sec] of Object.entries(parsed || {})) {
+    const section = String(sec || "").toLowerCase();
+    if (SECTIONS.includes(section)) out[sectionKey(name)] = section;
+  }
+  return out;
+}
+
 /* --------------------------------------------------------- shopping list */
 
 function normName(n) {
@@ -520,13 +582,15 @@ function ingredientLine(i) {
 
 // Parse "one ingredient per line" text. Lines that match an existing
 // ingredient exactly keep it as-is, so unchanged items keep their section.
+// New lines get a keyword guess and `guessed: true`, which the app replaces
+// with a section from Claude once the recipe is saved (sortNewIngredients).
 function parseIngredientLines(text, previous = []) {
   const byLine = new Map(previous.map((i) => [ingredientLine(i), i]));
   return text.split("\n").map((l) => l.trim()).filter(Boolean).map((l) => {
     if (byLine.has(l)) return byLine.get(l);
     const m = l.match(/^([\d./\s]+)?\s*(?:(tbsp|tsp|cups|cup|oz|lb|g|kg|can|head|slice|bunch)\b)?\s*(.+)$/i);
     const name = (m && m[3] ? m[3] : l).trim();
-    return ing(name, m && m[1] ? parseQty(m[1]) : null, m && m[2] ? m[2].toLowerCase() : "", guessSection(name));
+    return { ...ing(name, m && m[1] ? parseQty(m[1]) : null, m && m[2] ? m[2].toLowerCase() : "", guessSection(name)), guessed: true };
   });
 }
 
@@ -677,6 +741,7 @@ function SnackPlannerApp({ onSignOut }) {
   const [exposures, setExposures] = useState({});
   const [week, setWeek] = useState(() => emptyWeek(weekStartOf()));
   const [pantry, setPantry] = useState([]);
+  const [sectionMemory, setSectionMemory] = useState({}); // ingredient name -> section, learned from Claude
 
   const [busy, setBusy] = useState(null);
   const [error, setError] = useState(null);
@@ -717,6 +782,7 @@ function SnackPlannerApp({ onSignOut }) {
       setExposures(core?.exposures || computeExposures(wks));
       setWeek(cur || emptyWeek(thisWeekId));
       setPantry(Array.isArray(have) ? have : []);
+      setSectionMemory(core?.sections || {});
       setReady(true);
     })();
     return () => { cancelled = true; };
@@ -727,8 +793,8 @@ function SnackPlannerApp({ onSignOut }) {
   useEffect(() => {
     if (!ready) return;
     if (firstRun.current) { firstRun.current = false; return; }
-    saveKey(KEY_CORE, { library, weeks, exposures });
-  }, [library, weeks, exposures, ready]);
+    saveKey(KEY_CORE, { library, weeks, exposures, sections: sectionMemory });
+  }, [library, weeks, exposures, sectionMemory, ready]);
 
   useEffect(() => { if (ready) saveKey(KEY_WEEK, week); }, [week, ready]);
   useEffect(() => { if (ready) saveKey(KEY_HAVE, pantry); }, [pantry, ready]);
@@ -850,6 +916,35 @@ function SnackPlannerApp({ onSignOut }) {
   function addToLibrary(snack) {
     setLibrary((lib) => [...lib, snack]);
     flash(`Saved ${snack.title}`);
+    sortNewIngredients(snack.id, snack.ingredients);
+  }
+
+  // Hand-typed ingredients start with a keyword guess. Replace it with a
+  // remembered section, or ask Claude once for names it hasn't seen. If
+  // Claude can't be reached, the keyword guess stays.
+  async function sortNewIngredients(snackId, ingredients) {
+    const fresh = (ingredients || []).filter((i) => i.guessed);
+    if (!fresh.length) return;
+    const unknown = [...new Set(fresh.map((i) => i.name).filter((n) => !sectionMemory[sectionKey(n)]))];
+    let learned = {};
+    if (unknown.length) {
+      try {
+        learned = await sortIngredients(unknown);
+        setSectionMemory((m) => ({ ...m, ...learned }));
+      } catch (e) {
+        console.error("sortIngredients failed", e);
+      }
+    }
+    const lookup = { ...sectionMemory, ...learned };
+    setLibrary((lib) => lib.map((s) => s.id !== snackId ? s : {
+      ...s,
+      ingredients: (s.ingredients || []).map((i) => {
+        if (!i.guessed) return i;
+        const { guessed, ...rest } = i;
+        const section = lookup[sectionKey(i.name)];
+        return section ? { ...rest, section } : rest;
+      }),
+    }));
   }
 
   function toggleLibraryTag(id, tag) {
@@ -864,6 +959,7 @@ function SnackPlannerApp({ onSignOut }) {
   function updateLibrarySnack(id, patch) {
     setLibrary((lib) => lib.map((s) => (s.id === id ? { ...s, ...patch } : s)));
     flash("Saved changes");
+    sortNewIngredients(id, patch.ingredients);
   }
 
   // Pin a specific library snack to this week, and show it on the Week tab even
@@ -1825,6 +1921,8 @@ function LibraryView({ library, onAdd, onRemove, onUpdate, week, selectedIds, on
   const [url, setUrl] = useState("");
   const [importDinner, setImportDinner] = useState(false);
   const [importError, setImportError] = useState(null);
+  const photoInput = useRef(null);
+  const importing = busy === "import" || busy === "photo";
 
   const filtered = library.filter((s) => {
     if (kind === "dinner" && !hasTag(s, DINNER_TAG)) return false;
@@ -1848,6 +1946,26 @@ function LibraryView({ library, onAdd, onRemove, onUpdate, week, selectedIds, on
       setSheet(null);
     } catch (e) {
       setImportError("Couldn't read that page. Keep the link and fill in the details yourself.");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function doPhotoImport(e) {
+    const files = [...(e.target.files || [])].slice(0, MAX_PHOTOS);
+    e.target.value = ""; // so picking the same photo again still fires
+    if (!files.length) return;
+    setImportError(null);
+    setBusy("photo");
+    try {
+      const images = await Promise.all(files.map((f) => photoForClaude(f)));
+      const snack = await importRecipePhoto(images);
+      onAdd({ ...snack, tags: importDinner ? [DINNER_TAG] : [], tier: importDinner ? null : snack.tier });
+      setImportDinner(false);
+      setSheet(null);
+    } catch (err) {
+      console.error("photo import failed", err);
+      setImportError("Couldn't read a recipe from that photo. Try a closer, well-lit shot of the whole recipe, or enter it by hand.");
     } finally {
       setBusy(null);
     }
@@ -1929,7 +2047,7 @@ function LibraryView({ library, onAdd, onRemove, onUpdate, week, selectedIds, on
 
       <Sheet open={sheet === "url"} onClose={() => setSheet(null)} title="Add a recipe">
         <p className="text-sm font-semibold text-muted leading-relaxed mb-3">
-          Paste a link and the ingredients and quantities get pulled in so they feed the shopping list.
+          Paste a link or snap a photo, and the ingredients and quantities get pulled in so they feed the shopping list.
         </p>
         <input
           value={url} onChange={(e) => setUrl(e.target.value)}
@@ -1949,12 +2067,22 @@ function LibraryView({ library, onAdd, onRemove, onUpdate, week, selectedIds, on
           <button onClick={() => setSheet("manual")} className="btn-plain flex-1">
             Enter by hand
           </button>
-          <button onClick={doImport} disabled={busy === "import" || !url.trim()}
+          <button onClick={doImport} disabled={importing || !url.trim()}
                   className="btn-primary flex-1"
-                  style={{ opacity: busy === "import" || !url.trim() ? 0.5 : 1 }}>
+                  style={{ opacity: importing || !url.trim() ? 0.5 : 1 }}>
             {busy === "import" ? <><Loader2 size={16} className="animate-spin" /> Reading</> : "Pull it in"}
           </button>
         </div>
+        <input ref={photoInput} type="file" accept="image/*" multiple onChange={doPhotoImport} className="hidden" />
+        <button onClick={() => photoInput.current?.click()} disabled={importing}
+                className="btn-plain w-full mt-2" style={{ opacity: importing ? 0.5 : 1 }}>
+          {busy === "photo"
+            ? <><Loader2 size={16} className="animate-spin" /> Reading the photo</>
+            : <><Camera size={16} /> From a photo</>}
+        </button>
+        <p className="text-xs font-semibold text-muted mt-2 text-center">
+          Up to {MAX_PHOTOS} photos, for recipes that run over more than one page.
+        </p>
       </Sheet>
 
       <Sheet open={sheet === "manual"} onClose={() => setSheet(null)} title="Add by hand">
