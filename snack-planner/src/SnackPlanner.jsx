@@ -244,6 +244,45 @@ function lastVerdict(snack) {
   return rs.length ? rs[rs.length - 1].verdict : null;
 }
 
+// Minutes shown for a recipe: the average of its timed cooking sessions (`cookTimes`,
+// in seconds) once there is one, otherwise the estimate entered or imported.
+function cookMinutes(snack) {
+  const t = snack.cookTimes || [];
+  if (!t.length) return snack.prepMinutes || null;
+  return Math.max(1, Math.round(t.reduce((a, b) => a + b, 0) / t.length / 60));
+}
+
+/* ----------------------------------------------------------- cooking session */
+/* A session lives on this device only (not in the shared week data), so it can
+   survive a reload mid-cook without showing up on someone else's phone. */
+
+const KEY_COOKING = "snackplan:cooking:v1";
+const COOKING_STALE_MS = 12 * 60 * 60 * 1000; // an older session was walked away from
+
+function loadCooking() {
+  try {
+    const c = JSON.parse(localStorage.getItem(KEY_COOKING));
+    if (c && c.id && Date.now() - c.startedAt < COOKING_STALE_MS && c.startedAt <= Date.now()) return c;
+  } catch (e) { /* storage unavailable or unreadable */ }
+  return null;
+}
+
+function saveCooking(c) {
+  try {
+    if (c) localStorage.setItem(KEY_COOKING, JSON.stringify(c));
+    else localStorage.removeItem(KEY_COOKING);
+  } catch (e) { /* storage unavailable */ }
+}
+
+function fmtClock(ms) {
+  const total = Math.max(0, Math.floor(ms / 1000));
+  const h = Math.floor(total / 3600);
+  const m = Math.floor((total % 3600) / 60);
+  const s = total % 60;
+  const mm = h ? String(m).padStart(2, "0") : String(m);
+  return `${h ? `${h}:` : ""}${mm}:${String(s).padStart(2, "0")}`;
+}
+
 /* ------------------------------------------------------ suggestion engine */
 
 function pickFromLibrary(library, currentWeekId, count, exclude = new Set()) {
@@ -372,6 +411,11 @@ function guessSection(name) {
   return "other";
 }
 
+// The full method is stored as text, one step per line.
+function joinMethod(m) {
+  return (Array.isArray(m) ? m.join("\n") : String(m || "")).trim();
+}
+
 function coerceSnack(raw) {
   return {
     id: newId(),
@@ -380,7 +424,8 @@ function coerceSnack(raw) {
     tier: normalizeTier(raw.tier),
     prepMinutes: Number(raw.prepMinutes ?? raw.prep_time ?? raw.minutes) || null,
     ingredients: normalizeIngredients(raw.ingredients),
-    steps: String(raw.steps || raw.method || "").trim(),
+    steps: String(raw.steps || joinMethod(raw.method)).trim(),
+    method: joinMethod(raw.method),
     url: raw.url || "",
     tags: [],
     source: "generated",
@@ -427,15 +472,18 @@ Shape:
   return arr.map(coerceSnack);
 }
 
+const METHOD_SHAPE = "every step of the recipe's method in full, in order, one step per line, no numbering, nothing left out or shortened";
+
 async function importRecipe(url) {
   const prompt = `Search the web for this recipe page and read it: ${url}
 
 Extract it as a snack for a 2.5-year-old, keeping the quantities so they can feed a shopping list.
+"steps" is a short summary for a card; "method" is the complete recipe for cooking from.
 
 ${JSON_RULES}
 
 Shape:
-{"title":"","vegetable":"the main vegetable it's built around","tier":"grab|assembly|batch","prepMinutes":20,"steps":"1-2 sentences","ingredients":[{"name":"zucchini","qty":2,"unit":"","section":"produce"}]}`;
+{"title":"","vegetable":"the main vegetable it's built around","tier":"grab|assembly|batch","prepMinutes":20,"steps":"1-2 sentences","method":"${METHOD_SHAPE}","ingredients":[{"name":"zucchini","qty":2,"unit":"","section":"produce"}]}`;
 
   const text = await callClaude(prompt, { search: true });
   const parsed = extractJson(text);
@@ -476,8 +524,10 @@ If no image is attached, or it doesn't show a recipe, return {"error":"no recipe
 
 ${JSON_RULES}
 
+"steps" is a short summary for a card; "method" is the complete recipe for cooking from.
+
 Shape:
-{"title":"","vegetable":"the main vegetable it's built around","tier":"grab|assembly|batch","prepMinutes":20,"steps":"the method, condensed to a few sentences","ingredients":[{"name":"zucchini","qty":2,"unit":"","section":"produce"}]}`;
+{"title":"","vegetable":"the main vegetable it's built around","tier":"grab|assembly|batch","prepMinutes":20,"steps":"the method, condensed to a few sentences","method":"${METHOD_SHAPE}","ingredients":[{"name":"zucchini","qty":2,"unit":"","section":"produce"}]}`;
 
   const text = await callClaude(prompt, { images });
   const parsed = extractJson(text);
@@ -506,6 +556,24 @@ Fresh fruit, vegetables and herbs are produce; eggs are dairy; canned, dried and
     if (SECTIONS.includes(section)) out[sectionKey(name)] = section;
   }
   return out;
+}
+
+// Recipes imported before the full method was kept only have the short summary.
+async function fetchMethod(url) {
+  const prompt = `Search the web for this recipe page and read it: ${url}
+
+Copy out its complete method for someone cooking it right now.
+
+Return ONLY raw JSON. No markdown fences, no commentary before or after.
+
+Shape:
+{"method":"${METHOD_SHAPE}"}`;
+
+  const text = await callClaude(prompt, { search: true });
+  const parsed = extractJson(text);
+  const method = joinMethod((Array.isArray(parsed) ? parsed[0] : parsed)?.method);
+  if (!method) throw new Error("No method found on that page");
+  return method;
 }
 
 /* --------------------------------------------------------- shopping list */
@@ -742,6 +810,7 @@ function SnackPlannerApp({ onSignOut }) {
   const [week, setWeek] = useState(() => emptyWeek(weekStartOf()));
   const [pantry, setPantry] = useState([]);
   const [sectionMemory, setSectionMemory] = useState({}); // ingredient name -> section, learned from Claude
+  const [cooking, setCooking] = useState(loadCooking); // { id, startedAt } while a recipe is being cooked
 
   const [busy, setBusy] = useState(null);
   const [error, setError] = useState(null);
@@ -798,6 +867,11 @@ function SnackPlannerApp({ onSignOut }) {
 
   useEffect(() => { if (ready) saveKey(KEY_WEEK, week); }, [week, ready]);
   useEffect(() => { if (ready) saveKey(KEY_HAVE, pantry); }, [pantry, ready]);
+
+  // A session whose recipe has since been deleted can't be finished; drop it.
+  useEffect(() => {
+    if (ready && cooking && !library.some((s) => s.id === cooking.id)) cookLater();
+  }, [ready, cooking, library]);
 
   function computeExposures(wks, extra = []) {
     const out = {};
@@ -885,6 +959,32 @@ function SnackPlannerApp({ onSignOut }) {
       ...w,
       prepped: w.prepped.includes(id) ? w.prepped.filter((x) => x !== id) : [...w.prepped, id],
     }));
+  }
+
+  /* ------- cooking ------- */
+
+  function startCooking(id) {
+    const c = { id, startedAt: Date.now() };
+    saveCooking(c);
+    setCooking(c);
+  }
+
+  // "Cook later" drops the start time; only a start-to-finish session is timed.
+  function cookLater() {
+    saveCooking(null);
+    setCooking(null);
+  }
+
+  // "Finished" records the session's length on the recipe and marks it cooked.
+  function finishCooking() {
+    if (!cooking) return;
+    const seconds = Math.max(1, Math.round((Date.now() - cooking.startedAt) / 1000));
+    const { id } = cooking;
+    setLibrary((lib) => lib.map((s) => (s.id === id ? { ...s, cookTimes: [...(s.cookTimes || []), seconds] } : s)));
+    setWeek((w) => (w.prepped.includes(id) ? w : { ...w, prepped: [...w.prepped, id] }));
+    saveCooking(null);
+    setCooking(null);
+    flash(`Cooked in ${Math.max(1, Math.round(seconds / 60))} min`);
   }
 
   function logVerdict(snackId, verdict) {
@@ -1128,6 +1228,7 @@ function SnackPlannerApp({ onSignOut }) {
             week={week} setWeek={setWeek} pool={suggestionPool} busy={busy}
             library={library} dinnerLibrary={dinnerLibrary}
             onBuild={buildWeek} onToggleSelect={toggleSelected} onTogglePrepped={togglePrepped}
+            onStartCooking={startCooking}
             onAssignDinner={assignDinner} onClearDinner={clearDinner} onFillDinners={fillDinners}
             onClearDinnersWeek={clearDinnersWeek}
             onGoToLibrary={() => setTab("library")}
@@ -1165,8 +1266,15 @@ function SnackPlannerApp({ onSignOut }) {
         )}
       </div>
 
+      {cooking && library.some((s) => s.id === cooking.id) && (
+        <CookingScreen
+          snack={library.find((s) => s.id === cooking.id)} startedAt={cooking.startedAt}
+          onFinish={finishCooking} onLater={cookLater} onSaveMethod={updateLibrarySnack}
+        />
+      )}
+
       {toast && (
-        <div className="fixed left-0 right-0 flex justify-center z-40 px-5" style={{ bottom: 100 }}>
+        <div className="fixed left-0 right-0 flex justify-center z-[70] px-5" style={{ bottom: 100 }}>
           <div className="px-4 py-2.5 rounded-full text-sm font-bold bg-ink text-white shadow-sticker">
             {toast}
           </div>
@@ -1205,7 +1313,7 @@ function SnackPlannerApp({ onSignOut }) {
 
 function WeekView({
   mode, setMode, week, setWeek, pool, busy, library, dinnerLibrary,
-  onBuild, onToggleSelect, onTogglePrepped, onAssignDinner, onClearDinner, onFillDinners,
+  onBuild, onToggleSelect, onTogglePrepped, onStartCooking, onAssignDinner, onClearDinner, onFillDinners,
   onClearDinnersWeek, onGoToLibrary, selectedCount, onGoToList,
 }) {
   return (
@@ -1228,12 +1336,13 @@ function WeekView({
           week={week} library={library} dinnerLibrary={dinnerLibrary}
           onAssign={onAssignDinner} onClear={onClearDinner} onFill={onFillDinners}
           onClearWeek={onClearDinnersWeek}
-          onTogglePrepped={onTogglePrepped} onGoToLibrary={onGoToLibrary}
+          onTogglePrepped={onTogglePrepped} onStartCooking={onStartCooking} onGoToLibrary={onGoToLibrary}
         />
       ) : (
         <SnacksView
           week={week} setWeek={setWeek} pool={pool} library={library} busy={busy}
           onBuild={onBuild} onToggleSelect={onToggleSelect} onTogglePrepped={onTogglePrepped}
+          onStartCooking={onStartCooking}
         />
       )}
 
@@ -1257,7 +1366,7 @@ function WeekView({
 
 const TILE_BG = ["bg-peach", "bg-mint", "bg-butter"];
 
-function DinnersView({ week, library, dinnerLibrary, onAssign, onClear, onFill, onClearWeek, onTogglePrepped, onGoToLibrary }) {
+function DinnersView({ week, library, dinnerLibrary, onAssign, onClear, onFill, onClearWeek, onTogglePrepped, onStartCooking, onGoToLibrary }) {
   const [pickDay, setPickDay] = useState(null); // weekday being filled or swapped
   const [confirmClear, setConfirmClear] = useState(false);
   const byId = useMemo(() => new Map(library.map((s) => [s.id, s])), [library]);
@@ -1319,7 +1428,7 @@ function DinnersView({ week, library, dinnerLibrary, onAssign, onClear, onFill, 
               <div className="flex-1 min-w-0">
                 <h2 className="font-display text-2xl font-semibold leading-tight">{s.title}</h2>
                 <div className="flex items-center gap-2 flex-wrap mt-1.5 text-xs font-extrabold">
-                  {!!s.prepMinutes && <span className="inline-flex items-center gap-1"><Clock size={12} /> {s.prepMinutes} min</span>}
+                  {!!cookMinutes(s) && <span className="inline-flex items-center gap-1"><Clock size={12} /> {cookMinutes(s)} min</span>}
                   {cookedNote(s)}
                 </div>
               </div>
@@ -1331,10 +1440,13 @@ function DinnersView({ week, library, dinnerLibrary, onAssign, onClear, onFill, 
             </div>
             <div className="flex gap-2">
               <button onClick={() => setPickDay(tonight)} className="btn-plain flex-1">Swap dinner</button>
-              <button onClick={() => onTogglePrepped(s.id)} aria-pressed={cooked}
-                      className={`btn flex-1 ${cooked ? "bg-white text-ink" : "bg-berry text-white shadow-sticker-sm"}`}>
-                {cooked ? <><Check size={16} strokeWidth={3} /> Cooked</> : "Mark cooked"}
-              </button>
+              {cooked ? (
+                <button onClick={() => onTogglePrepped(s.id)} aria-pressed className="btn bg-white text-ink flex-1">
+                  <Check size={16} strokeWidth={3} /> Cooked
+                </button>
+              ) : (
+                <button onClick={() => onStartCooking(s.id)} className="btn-primary flex-1">Start Cooking</button>
+              )}
             </div>
           </article>
         );
@@ -1376,7 +1488,7 @@ function DinnersView({ week, library, dinnerLibrary, onAssign, onClear, onFill, 
                 {s.title}
               </button>
               <div className="mt-auto text-xs font-extrabold flex items-center gap-1.5 flex-wrap">
-                {cookedNote(s) || (!!s.prepMinutes && <span>{s.prepMinutes} min</span>)}
+                {cookedNote(s) || (!!cookMinutes(s) && <span>{cookMinutes(s)} min</span>)}
               </div>
             </article>
           );
@@ -1453,7 +1565,7 @@ function DinnerPicker({ dinners, week, day, current, onPick, onClear, onGoToLibr
             <div className="flex-1 min-w-0">
               <span className="font-display text-base font-semibold leading-tight block">{s.title}</span>
               <span className="flex items-center gap-2 flex-wrap mt-1 text-xs font-extrabold">
-                {!!s.prepMinutes && <span>{s.prepMinutes} min</span>}
+                {!!cookMinutes(s) && <span>{cookMinutes(s)} min</span>}
                 {last && <span style={{ color: VERDICTS[last].tone }}>{VERDICTS[last].label.toLowerCase()} last time</span>}
                 {s.lastMadeWeek && <span className="text-muted">made week of {prettyWeek(s.lastMadeWeek)}</span>}
               </span>
@@ -1475,7 +1587,7 @@ function DinnerPicker({ dinners, week, day, current, onPick, onClear, onGoToLibr
 
 /* ---- snacks: the suggestion list */
 
-function SnacksView({ week, setWeek, pool: allPool, library, busy, onBuild, onToggleSelect, onTogglePrepped }) {
+function SnacksView({ week, setWeek, pool: allPool, library, busy, onBuild, onToggleSelect, onTogglePrepped, onStartCooking }) {
   const pool = allPool.filter((s) => !hasTag(s, DINNER_TAG));
   const [tierFilter, setTierFilter] = useState([]);
   const [chosenOnly, setChosenOnly] = useState(false);
@@ -1550,6 +1662,7 @@ function SnacksView({ week, setWeek, pool: allPool, library, busy, onBuild, onTo
             prepped={week.prepped.includes(s.id)}
             onSelect={() => onToggleSelect(s)}
             onPrepped={() => onTogglePrepped(s.id)}
+            onStartCooking={() => onStartCooking(s.id)}
           />
         ))}
       </div>
@@ -1573,7 +1686,7 @@ function SnacksView({ week, setWeek, pool: allPool, library, busy, onBuild, onTo
   );
 }
 
-function SnackCard({ snack, selected, prepped, onSelect, onPrepped }) {
+function SnackCard({ snack, selected, prepped, onSelect, onPrepped, onStartCooking }) {
   const [open, setOpen] = useState(false);
   const avg = avgScore(snack);
   const last = lastVerdict(snack);
@@ -1599,7 +1712,7 @@ function SnackCard({ snack, selected, prepped, onSelect, onPrepped }) {
               <span className="inline-flex items-center gap-1">
                 <Clock size={12} />
                 {snack.tier === "grab" ? "grab and go"
-                  : snack.prepMinutes ? `${snack.prepMinutes} min` : (TIERS[snack.tier]?.label.toLowerCase() || "no prep time")}
+                  : cookMinutes(snack) ? `${cookMinutes(snack)} min` : (TIERS[snack.tier]?.label.toLowerCase() || "no prep time")}
               </span>
               {hasTag(snack, DINNER_TAG) && <TagChip />}
               {last && (
@@ -1640,15 +1753,105 @@ function SnackCard({ snack, selected, prepped, onSelect, onPrepped }) {
             </div>
           )}
 
-          {selected && (
-            <button
-              onClick={onPrepped}
-              aria-pressed={!!prepped}
-              className={`btn mt-3 w-full text-sm ${prepped ? "bg-berry text-white shadow-sticker-sm" : "bg-white text-ink"}`}
-            >
-              {prepped ? <><Check size={15} strokeWidth={3} /> Prepped</> : "Mark as prepped"}
+          {selected && (prepped ? (
+            <button onClick={onPrepped} aria-pressed className="btn mt-3 w-full text-sm bg-berry text-white shadow-sticker-sm">
+              <Check size={15} strokeWidth={3} /> Prepped
             </button>
-          )}
+          ) : (
+            <button onClick={onStartCooking} className="btn mt-3 w-full text-sm bg-white text-ink">Start Cooking</button>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* --------------------------------------------------------- cooking screen */
+
+// Full-screen recipe with the ingredients first. The only ways out are Finished
+// (records the time) and Cook Later (forgets the start).
+function CookingScreen({ snack, startedAt, onFinish, onLater, onSaveMethod }) {
+  const [now, setNow] = useState(Date.now());
+  const [loading, setLoading] = useState(false);
+  const [err, setErr] = useState(null);
+
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, []);
+
+  const stepLines = (snack.method || "").split("\n")
+    .map((l) => l.replace(/^\s*(?:step\s*)?\d+\s*[.):-]\s+/i, "").trim())
+    .filter(Boolean);
+
+  async function loadFull() {
+    setLoading(true);
+    setErr(null);
+    try {
+      onSaveMethod(snack.id, { method: await fetchMethod(snack.url) });
+    } catch (e) {
+      setErr(`Couldn't load the full recipe (${e.message}).`);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-[60] bg-blush overflow-y-auto" role="dialog" aria-modal="true" aria-label={`Cooking ${snack.title}`}>
+      <div className="mx-auto px-5 pt-6 pb-40" style={{ maxWidth: 560 }}>
+        <div className="flex items-center justify-between gap-3 mb-3">
+          <span className="rounded-full bg-butter border-2 border-ink shadow-sticker-sm px-3 py-1.5 text-[13px] font-extrabold inline-flex items-center gap-1.5">
+            <Clock size={14} /> <span className="tabular-nums">{fmtClock(now - startedAt)}</span>
+          </span>
+          {!!cookMinutes(snack) && <span className="text-xs font-extrabold text-muted">usually {cookMinutes(snack)} min</span>}
+        </div>
+        <h1 className="font-display text-[30px] leading-tight font-semibold">{snack.title}</h1>
+
+        <h2 className="font-display text-xl font-semibold mt-6 mb-2">Ingredients</h2>
+        {(snack.ingredients || []).length ? (
+          <ul className="sticker p-4 space-y-2">
+            {snack.ingredients.map((i, n) => (
+              <li key={n} className="text-[15px] font-bold leading-snug">{ingredientLine(i)}</li>
+            ))}
+          </ul>
+        ) : (
+          <p className="text-[15px] font-bold text-muted">No ingredients listed.</p>
+        )}
+
+        <h2 className="font-display text-xl font-semibold mt-6 mb-2">Method</h2>
+        {stepLines.length ? (
+          <ol className="space-y-3">
+            {stepLines.map((l, n) => (
+              <li key={n} className="sticker p-3.5 flex gap-3">
+                <span className="shrink-0 w-7 h-7 rounded-full bg-peach border-2 border-ink flex items-center justify-center font-display text-sm font-semibold">{n + 1}</span>
+                <span className="text-[15px] font-semibold leading-relaxed">{l}</span>
+              </li>
+            ))}
+          </ol>
+        ) : (
+          <div className="sticker p-4">
+            {snack.steps
+              ? <p className="text-[15px] font-semibold leading-relaxed whitespace-pre-line">{snack.steps}</p>
+              : <p className="text-[15px] font-bold text-muted">No method saved for this recipe.</p>}
+            {snack.url && (
+              <div className="mt-3 flex flex-wrap items-center gap-3">
+                <button onClick={loadFull} disabled={loading} className="btn-plain" style={{ opacity: loading ? 0.6 : 1 }}>
+                  {loading ? <Loader2 size={16} className="animate-spin" /> : <RefreshCw size={16} />} Load the full recipe
+                </button>
+                <a href={snack.url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-xs font-extrabold underline">
+                  <Link2 size={12} /> open recipe page
+                </a>
+              </div>
+            )}
+            {err && <p className="text-xs font-bold mt-2">{err}</p>}
+          </div>
+        )}
+      </div>
+
+      <div className="fixed bottom-0 left-0 right-0 px-5 pb-4 pt-3 bg-blush border-t-2 border-line">
+        <div className="mx-auto flex gap-3" style={{ maxWidth: 520 }}>
+          <button onClick={onLater} className="btn-plain flex-1 min-h-[52px]">Cook Later</button>
+          <button onClick={onFinish} className="btn-primary flex-1 min-h-[52px]">Finished</button>
         </div>
       </div>
     </div>
@@ -2116,10 +2319,10 @@ function LibraryCard({ snack: s, inWeek, onToggleInWeek, onToggleTag, onEdit, on
               <span>{TIERS[s.tier].label}</span>
             </>
           )}
-          {!!s.prepMinutes && (
+          {!!cookMinutes(s) && (
             <>
               <span>·</span>
-              <span className="inline-flex items-center gap-1"><Clock size={12} /> {s.prepMinutes} min</span>
+              <span className="inline-flex items-center gap-1"><Clock size={12} /> {cookMinutes(s)} min</span>
             </>
           )}
           {last && (
@@ -2213,6 +2416,7 @@ function EditForm({ snack, onSave }) {
   const [url, setUrl] = useState(snack.url || "");
   const [tier, setTier] = useState(snack.tier || null);
   const [steps, setSteps] = useState(snack.steps || "");
+  const [method, setMethod] = useState(snack.method || "");
   const [minutes, setMinutes] = useState(snack.prepMinutes ? String(snack.prepMinutes) : "");
   const [lines, setLines] = useState((snack.ingredients || []).map(ingredientLine).join("\n"));
 
@@ -2220,7 +2424,8 @@ function EditForm({ snack, onSave }) {
     if (!title.trim()) return;
     const n = Math.round(Number(minutes));
     onSave({
-      title: title.trim(), url: cleanUrl(url), steps: steps.trim(), prepMinutes: n > 0 ? n : null,
+      title: title.trim(), url: cleanUrl(url), steps: steps.trim(), method: method.trim(),
+      prepMinutes: n > 0 ? n : null,
       tier: dinner ? tier : tier || "assembly",
       ingredients: parseIngredientLines(lines, snack.ingredients || []),
     });
@@ -2249,10 +2454,21 @@ function EditForm({ snack, onSave }) {
                   className="field mt-1 resize-none" />
       </label>
       <label className="block">
+        <span className="text-xs font-extrabold text-muted">Full recipe (shown while cooking, one step per line)</span>
+        <textarea value={method} onChange={(e) => setMethod(e.target.value)} rows={6}
+                  placeholder="Every step, in full"
+                  className="field mt-1 resize-none" />
+      </label>
+      <label className="block">
         <span className="text-xs font-extrabold text-muted">Time to prepare (minutes)</span>
         <input value={minutes} onChange={(e) => setMinutes(e.target.value)} placeholder="e.g. 10"
                type="number" inputMode="numeric" min="0"
                className="field mt-1" />
+        {!!(snack.cookTimes || []).length && (
+          <span className="text-xs font-bold text-muted block mt-1.5">
+            Shown as {cookMinutes(snack)} min, the average of {snack.cookTimes.length} timed {snack.cookTimes.length === 1 ? "session" : "sessions"}. This is only the estimate until then.
+          </span>
+        )}
       </label>
       <label className="block">
         <span className="text-xs font-extrabold text-muted">Ingredients (one per line)</span>
