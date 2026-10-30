@@ -56,8 +56,8 @@ function prettyWeek(id) {
   return `${f(d)} – ${f(end)}`;
 }
 
-// Dinners are planned Monday to Friday; days are numbered from Monday = 0.
-const DINNER_DAYS = [0, 1, 2, 3, 4];
+// Dinners are planned for every day of the week; days are numbered from Monday = 0.
+const DINNER_DAYS = [0, 1, 2, 3, 4, 5, 6];
 const todayIndex = () => (new Date().getDay() + 6) % 7;
 
 function dayInfo(weekId, idx) {

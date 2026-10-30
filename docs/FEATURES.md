@@ -17,15 +17,15 @@ Current behavior of the app. Update this file whenever a feature is added, chang
 - Dinners are never offered as snack suggestions. Snacks are never offered when planning dinners.
 
 ## Week tab
-A Dinners / Snacks toggle at the top. The header badge shows "N of 5 planned" on Dinners and "N snacks chosen" on Snacks. A "See the shopping list" button appears once anything is chosen.
+A Dinners / Snacks toggle at the top. The header badge shows "N of 7 planned" on Dinners and "N snacks chosen" on Snacks. A "See the shopping list" button appears once anything is chosen.
 
 ### Dinners
-- One slot per weekday, Monday to Friday. A dinner planned on a day is also chosen for the week, so it feeds the shopping list and the Log.
-- **Tonight** card (shown on weekdays) highlights today's dinner with "Swap dinner" and "Start Cooking" (see Cooking below; it reads "Cooked" once done, and tapping that unmarks it). If nothing is planned for today it offers "Pick a dinner".
+- One slot per day, Monday to Sunday. A dinner planned on a day is also chosen for the week, so it feeds the shopping list and the Log.
+- **Tonight** card (shown every day) highlights today's dinner with "Swap dinner" and "Start Cooking" (see Cooking below; it reads "Cooked" once done, and tapping that unmarks it). If nothing is planned for today it offers "Pick a dinner".
 - The other days are tiles. Tap a tile's title to pick or swap its dinner, or tap an empty tile ("Add a dinner"). The round check marks that dinner cooked; a logged rating shows on the tile.
 - The picker lists the library's dinners. Dinners already on another day are listed last with that day's name. "Clear <day>" empties the slot.
-- "Fill empty days from my library" fills every empty weekday using the same cooldown and variety rules as snack suggestions (below). It may fill fewer days if too few dinners qualify, and says so.
-- "Clear week" (below the tiles, shown when at least one dinner is planned) empties all five days after a confirm step. Cleared dinners also leave the shopping list and the Log; ratings already logged stay in History and on the recipes. Snacks chosen for the week are not touched.
+- "Fill empty days from my library" fills every empty day using the same cooldown and variety rules as snack suggestions (below). It may fill fewer days if too few dinners qualify, and says so.
+- "Clear week" (below the tiles, shown when at least one dinner is planned) empties all seven days after a confirm step. Cleared dinners also leave the shopping list and the Log; ratings already logged stay in History and on the recipes. Snacks chosen for the week are not touched.
 - With no dinners in the library, the tab points to the Library to add one and tag it Weekday dinner.
 - Dinners are planned from the library only; there are no AI-generated dinner ideas yet.
 
@@ -68,7 +68,7 @@ A Dinners / Snacks toggle at the top. The header badge shows "N of 5 planned" on
 - Snack timing (Grab and go, 2-3 min, Weekend batch) is required for snacks and optional for dinners: turning the Weekday dinner tag on clears it, and for a dinner tapping the selected timing again clears it (also in Edit). A dinner with no timing simply shows no timing label.
 - Add, edit and picker popups open centered on the screen, scroll inside themselves when taller than the screen, and close with the X or the Escape key.
 - "Weekday dinner" tag: toggle it on any recipe from the library list.
-- "Add to this week" on a snack selects it for the current week (it appears on the Snacks view and feeds the shopping list). On a dinner the button reads "Add to a day" and asks which weekday. Tap "In this week" to take either back out (a dinner also leaves its day). A new set of snack suggestions replaces the Snacks cards but a pinned snack stays selected and on the list and log.
+- "Add to this week" on a snack selects it for the current week (it appears on the Snacks view and feeds the shopping list). On a dinner the button reads "Add to a day" and asks which day. Tap "In this week" to take either back out (a dinner also leaves its day). A new set of snack suggestions replaces the Snacks cards but a pinned snack stays selected and on the list and log.
 
 ## History tab
 - Exposure meter per vegetable, out to 10 tries, with a "warming up" flag when recent ratings improve.
@@ -77,5 +77,5 @@ A Dinners / Snacks toggle at the top. The header badge shows "N of 5 planned" on
 ## Known limits
 - No per-user data: every signed-in account sees and edits the same household data.
 - All data is one shared set of rows, so simultaneous edits from two devices are last-write-wins.
-- Dinners cover Monday to Friday only, one dinner per day.
+- Dinners are one per day, Monday to Sunday. The "Weekday dinner" tag keeps its name even though dinners can now be planned for the weekend.
 - No automated tests.
