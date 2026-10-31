@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo, useRef, useCallback } from "react"
 import {
   Carrot, ShoppingBasket, ClipboardCheck, BookMarked, TrendingUp,
   Plus, Check, X, Link2, Loader2, Copy, Search, RefreshCw,
-  ChevronDown, ChevronRight, Trash2, Sparkles, Clock, Pencil, Camera,
+  ChevronDown, ChevronRight, Trash2, Sparkles, Clock, Pencil, Camera, ChefHat,
 } from "lucide-react";
 import { supabase, supabaseConfigured } from "./lib/supabaseClient";
 
@@ -1256,7 +1256,7 @@ function SnackPlannerApp({ onSignOut }) {
           <LibraryView
             library={library} onAdd={addToLibrary} onRemove={removeFromLibrary} onUpdate={updateLibrarySnack}
             week={week} selectedIds={week.selected} onToggleInWeek={toggleInWeek} onToggleTag={toggleLibraryTag}
-            onAssignDinner={assignDinner}
+            onAssignDinner={assignDinner} onCookNow={startCooking}
             busy={busy} setBusy={setBusy} flash={flash}
           />
         )}
@@ -2055,7 +2055,9 @@ function ShoppingView({ snacks, week, setWeek, pantry, setPantry, flash, onGoToW
 
 function LogView({ week, pool, onTogglePrepped, onLog, onGoToWeek }) {
   const byId = new Map(pool.map((s) => [s.id, s]));
-  const chosen = week.selected.map((id) => byId.get(id)).filter(Boolean);
+  // Chosen recipes, plus any cooked off-plan from the Library ("Cook Now").
+  const ids = [...week.selected, ...week.prepped.filter((id) => !week.selected.includes(id))];
+  const chosen = ids.map((id) => byId.get(id)).filter(Boolean);
 
   if (!chosen.length) {
     return (
@@ -2115,7 +2117,7 @@ function LogView({ week, pool, onTogglePrepped, onLog, onGoToWeek }) {
 
 /* ----------------------------------------------------------- library view */
 
-function LibraryView({ library, onAdd, onRemove, onUpdate, week, selectedIds, onToggleInWeek, onToggleTag, onAssignDinner, busy, setBusy, flash }) {
+function LibraryView({ library, onAdd, onRemove, onUpdate, week, selectedIds, onToggleInWeek, onToggleTag, onAssignDinner, onCookNow, busy, setBusy, flash }) {
   const [q, setQ] = useState("");
   const [kind, setKind] = useState("all"); // "all" | "dinner" | "snack"
   const [sheet, setSheet] = useState(null); // "url" | "manual"
@@ -2209,6 +2211,7 @@ function LibraryView({ library, onAdd, onRemove, onUpdate, week, selectedIds, on
               hasTag(s, DINNER_TAG) && !(selectedIds || []).includes(s.id) ? setDayFor(s) : onToggleInWeek(s)
             )}
             onToggleTag={() => onToggleTag(s.id, DINNER_TAG)}
+            onCookNow={() => onCookNow(s.id)}
             onEdit={() => setEditing(s)}
             onRemove={() => onRemove(s.id)}
           />
@@ -2298,7 +2301,7 @@ function LibraryView({ library, onAdd, onRemove, onUpdate, week, selectedIds, on
   );
 }
 
-function LibraryCard({ snack: s, inWeek, onToggleInWeek, onToggleTag, onEdit, onRemove }) {
+function LibraryCard({ snack: s, inWeek, onToggleInWeek, onToggleTag, onCookNow, onEdit, onRemove }) {
   const [open, setOpen] = useState(false);
   const last = lastVerdict(s);
   const dinner = hasTag(s, DINNER_TAG);
@@ -2370,6 +2373,9 @@ function LibraryCard({ snack: s, inWeek, onToggleInWeek, onToggleTag, onEdit, on
                   dinner ? "bg-mint text-mintink border-ink" : "bg-transparent text-muted border-dim"
                 }`}>
           {TAG_LABEL[DINNER_TAG]}
+        </button>
+        <button onClick={onCookNow} className="btn text-sm bg-white text-ink">
+          <ChefHat size={15} strokeWidth={2.4} /> Cook Now
         </button>
         {open && (
           <button onClick={onEdit} className="btn-plain text-sm">
