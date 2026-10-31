@@ -2,6 +2,9 @@
 
 Newest first. Add an entry for every user-visible or infrastructure change.
 
+## 2026-10-31
+- Library cards have a "Cook Now" button that opens the cooking screen for any recipe, planned or not. Finishing an off-plan cook records the time and marks it cooked for the week; the Log now also lists recipes cooked this way so they can be rated.
+
 ## 2026-10-30
 - Dinners can now be planned for Saturday and Sunday as well (seven days, Monday to Sunday). Existing plans are unaffected (no migration needed). The "Weekday dinner" tag keeps its name.
 - Added a cooking screen. "Start Cooking" replaces "Mark cooked" on the Tonight card and "Mark as prepped" on selected snack cards; it opens a full-screen view with a timer, the ingredients, and the full method. Finished marks the recipe cooked and records the time; Cook Later discards it. A recipe's shown time is now the average of its recorded cook times. URL and photo imports now keep the complete method (new `method` and `cookTimes` recipe fields; no migration needed), older ones can load it from the cooking screen, and the Library Edit form has a "Full recipe" field.
