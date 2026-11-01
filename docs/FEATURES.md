@@ -68,7 +68,7 @@ A Dinners / Snacks toggle at the top. The header badge shows "N of 7 planned" on
 - Add by hand: name, optional recipe link (a link typed on the first screen carries over; a bare "example.com/x" gets https:// added), main vegetable, optional "Weekday dinner" tag, snack timing, description (how to make it) and one ingredient per line.
 - Snack timing (Grab and go, 2-3 min, Weekend batch) is required for snacks and optional for dinners: turning the Weekday dinner tag on clears it, and for a dinner tapping the selected timing again clears it (also in Edit). A dinner with no timing simply shows no timing label.
 - Add, edit and picker popups open centered on the screen, scroll inside themselves when taller than the screen, and close with the X or the Escape key.
-- "Weekday dinner" tag: toggle it on any recipe from the library list.
+- "Weekday dinner" tag: toggle it on any recipe from the library list. The toggle shows only when the card is expanded (like Edit); collapsed cards still show "Add to a day" on dinners.
 - "Cook Now" on every recipe opens the cooking screen straight away, without planning it (see Cooking).
 - "Add to this week" on a snack selects it for the current week (it appears on the Snacks view and feeds the shopping list). On a dinner the button reads "Add to a day" and asks which day. Tap "In this week" to take either back out (a dinner also leaves its day). A new set of snack suggestions replaces the Snacks cards but a pinned snack stays selected and on the list and log.
 
