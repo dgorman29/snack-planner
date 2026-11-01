@@ -63,7 +63,7 @@ Current behavior of the app. Update this file whenever a feature is added, chang
 - Grouped by produce, dairy, pantry, frozen, other.
 - Sections for hand-typed ingredients (Add by hand, or new lines in Edit): saved first with a keyword guess, then Claude sorts any names it hasn't seen and the app remembers the answer, so each name is asked about once. If Claude can't be reached the keyword guess stays. Recipes from AI ideas, a link or a photo get their sections from Claude when they're created.
 - Check items off, mark "have it" (remembered in the pantry list), and add manual items. Ticks, "have it" and manual items belong to their week; each week has its own "Add something else" box.
-- "Copy as text" copies what's still to buy for the visible weeks, under a heading per week.
+- "Copy" (next to the Shopping list title) copies what's still to buy for the visible weeks as text, under a heading per week.
 
 ## Log tab
 - Lists the week's chosen recipes plus anything cooked off-plan with "Cook Now". Prepped snacks and cooked dinners can be rated Loved it, Ate some, or Refused. Ratings drive future suggestions. Dinner cards show their day ("Tue dinner") and say "cooked" instead of "prepped".

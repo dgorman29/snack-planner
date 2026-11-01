@@ -829,6 +829,7 @@ function SnackPlannerApp({ onSignOut }) {
   const [exposures, setExposures] = useState({});
   const [week, setWeek] = useState(() => emptyWeek(weekStartOf()));
   const [nextWeek, setNextWeek] = useState(() => emptyWeek(nextWeekId()));
+  const [listView, setListView] = useState(loadListView); // shopping list filters, per device
   const [planWhich, setPlanWhich] = useState("this"); // which week the Week tab (and Library buttons) plan: "this" | "next"
   const [pantry, setPantry] = useState([]);
   const [sectionMemory, setSectionMemory] = useState({}); // ingredient name -> section, learned from Claude
@@ -1197,6 +1198,11 @@ function SnackPlannerApp({ onSignOut }) {
     [week.prepped, week.logs]
   );
 
+  const shopLists = [
+    { id: "this", label: "This week", snacks: selectedSnacks, week, setWeek },
+    { id: "next", label: "Next week", snacks: nextSelected, week: nextWeek, setWeek: setNextWeek },
+  ];
+
   if (!ready) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-blush">
@@ -1242,6 +1248,11 @@ function SnackPlannerApp({ onSignOut }) {
                 {snackCount} snack{snackCount === 1 ? "" : "s"} chosen
               </span>
             )}
+            {tab === "list" && shopLists.some(hasListItems) && (
+              <button onClick={() => copyList(shopLists, listView, pantry, flash)} className="btn-plain shadow-sticker-sm text-sm shrink-0">
+                <Copy size={15} /> Copy
+              </button>
+            )}
             {tab === "log" && needsLogging > 0 && (
               <span className="rounded-full bg-butter border-2 border-ink shadow-sticker-sm px-3 py-1.5 text-[13px] font-extrabold whitespace-nowrap">
                 {needsLogging} to rate
@@ -1280,11 +1291,8 @@ function SnackPlannerApp({ onSignOut }) {
 
         {tab === "list" && (
           <ShoppingView
-            lists={[
-              { id: "this", label: "This week", snacks: selectedSnacks, week, setWeek },
-              { id: "next", label: "Next week", snacks: nextSelected, week: nextWeek, setWeek: setNextWeek },
-            ]}
-            pantry={pantry} setPantry={setPantry} flash={flash}
+            lists={shopLists} view={listView} setView={setListView}
+            pantry={pantry} setPantry={setPantry}
             onGoToWeek={(which) => { if (which === "this" || which === "next") setPlanWhich(which); setTab("week"); }}
           />
         )}
@@ -1369,11 +1377,6 @@ function WeekView({
           <Pill key={id} active={planWhich === id} onClick={() => setPlanWhich(id)}>{label}</Pill>
         ))}
       </div>
-      {isNext && (
-        <p className="px-5 -mt-1 mb-3 text-xs font-bold text-muted">
-          Planning ahead. This becomes your week on Monday; cooking and rating start then.
-        </p>
-      )}
       <div className="px-5 mb-4">
         <div className="flex p-[3px] bg-white border-2 border-ink rounded-[18px] shadow-sticker">
           {[["dinners", "Dinners"], ["snacks", "Snacks"]].map(([id, label]) => (
@@ -1956,8 +1959,32 @@ function weekListText(entry, pantrySet) {
 
 const hasListItems = (entry) => entry.snacks.length > 0 || (entry.week.manual || []).length > 0;
 
-function ShoppingView({ lists, pantry, setPantry, flash, onGoToWeek }) {
-  const [view, setView] = useState(loadListView);
+// The still-to-buy items of the visible weeks, copied as plain text with a heading per week.
+async function copyList(lists, view, pantry, flash) {
+  const pantrySet = new Set(pantry);
+  const parts = lists
+    .filter((l) => view.show.includes(l.id))
+    .map((l) => ({ l, text: weekListText(l, pantrySet) }))
+    .filter((p) => p.text)
+    .map(({ l, text }) => `Shopping list — ${l.label.toLowerCase()} (${prettyWeek(l.week.id)})\n\n${text}`);
+  const plainText = parts.join("\n\n") || "Nothing left to buy.";
+  try {
+    await navigator.clipboard.writeText(plainText);
+    flash("List copied");
+  } catch {
+    const ta = document.createElement("textarea");
+    ta.value = plainText;
+    ta.style.position = "fixed";
+    ta.style.opacity = "0";
+    document.body.appendChild(ta);
+    ta.select();
+    try { document.execCommand("copy"); flash("List copied"); }
+    catch { flash("Copy didn't work — select the text instead"); }
+    document.body.removeChild(ta);
+  }
+}
+
+function ShoppingView({ lists, view, setView, pantry, setPantry, onGoToWeek }) {
   const pantrySet = useMemo(() => new Set(pantry), [pantry]);
   const visible = lists.filter((l) => view.show.includes(l.id));
 
@@ -1969,28 +1996,6 @@ function ShoppingView({ lists, pantry, setPantry, flash, onGoToWeek }) {
     const on = view.show.includes(id);
     if (on && view.show.length === 1) return; // always show at least one week
     update({ ...view, show: on ? view.show.filter((x) => x !== id) : lists.map((l) => l.id).filter((x) => x === id || view.show.includes(x)) });
-  }
-
-  async function copy() {
-    const parts = visible
-      .map((l) => ({ l, text: weekListText(l, pantrySet) }))
-      .filter((p) => p.text)
-      .map(({ l, text }) => `Shopping list — ${l.label.toLowerCase()} (${prettyWeek(l.week.id)})\n\n${text}`);
-    const plainText = parts.join("\n\n") || "Nothing left to buy.";
-    try {
-      await navigator.clipboard.writeText(plainText);
-      flash("List copied");
-    } catch {
-      const ta = document.createElement("textarea");
-      ta.value = plainText;
-      ta.style.position = "fixed";
-      ta.style.opacity = "0";
-      document.body.appendChild(ta);
-      ta.select();
-      try { document.execCommand("copy"); flash("List copied"); }
-      catch { flash("Copy didn't work — select the text instead"); }
-      document.body.removeChild(ta);
-    }
   }
 
   if (!lists.some(hasListItems)) {
@@ -2007,7 +2012,7 @@ function ShoppingView({ lists, pantry, setPantry, flash, onGoToWeek }) {
 
   return (
     <div className="px-5">
-      <div className="flex gap-2 mb-3 overflow-x-auto py-1 -mx-5 px-5">
+      <div className="flex gap-2 mb-4 overflow-x-auto py-1 -mx-5 px-5">
         {lists.map((l) => (
           <Pill key={l.id} active={view.show.includes(l.id)} onClick={() => toggleWeek(l.id)}>{l.label}</Pill>
         ))}
@@ -2015,12 +2020,6 @@ function ShoppingView({ lists, pantry, setPantry, flash, onGoToWeek }) {
           Hide bought
         </Pill>
       </div>
-      <div className="flex justify-end mb-4">
-        <button onClick={copy} className="btn-plain shadow-sticker-sm text-sm">
-          <Copy size={15} /> Copy as text
-        </button>
-      </div>
-
       <div className="space-y-7">
         {visible.map((l) => (
           <WeekList key={l.id} entry={l} pantrySet={pantrySet} setPantry={setPantry}

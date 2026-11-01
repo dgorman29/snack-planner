@@ -3,6 +3,7 @@
 Newest first. Add an entry for every user-visible or infrastructure change.
 
 ## 2026-11-01
+- Shopping list header is shorter: "Copy as text" is now a "Copy" button beside the title, leaving one row of filter pills. Removed the "Planning ahead" note from the Next week view.
 - Fixed last week sometimes missing from History: the Monday rollover now saves the archived week immediately instead of waiting for the next library or rating change.
 - Next week can be planned ahead: "This week" / "Next week" pills on the Week tab, with the Library's add buttons following the choice. Next week is planning only (no cooking or rating) and becomes this week on Monday. New `snackplan:nextweek:v1` key (no migration needed).
 - The shopping list shows this week and next week as separate parts, with filter pills to choose the visible weeks and hide bought items (remembered per device in `localStorage`). "Copy as text" covers the visible weeks.
