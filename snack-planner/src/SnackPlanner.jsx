@@ -865,6 +865,7 @@ function SnackPlannerApp({ onSignOut }) {
         }).filter(Boolean);
         if (entries.length || (storedWeek.selected || []).length) {
           wks = [...wks, { id: storedWeek.id, entries }];
+          firstRun.current = false; // the archived week is new, so save it straight away
         }
         cur = null;
       }
@@ -889,6 +890,8 @@ function SnackPlannerApp({ onSignOut }) {
   const firstRun = useRef(true);
   useEffect(() => {
     if (!ready) return;
+    // The first run after loading would only re-save what was just loaded, unless
+    // the load archived last week (see the rollover above), which must be saved.
     if (firstRun.current) { firstRun.current = false; return; }
     saveKey(KEY_CORE, { library, weeks, exposures, sections: sectionMemory });
   }, [library, weeks, exposures, sectionMemory, ready]);
