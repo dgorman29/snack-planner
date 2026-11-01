@@ -15,12 +15,15 @@ Browser (GitHub Pages)
 | Hosting | GitHub Pages | Built and deployed by `.github/workflows/deploy.yml` on push to `main` |
 
 ## Storage model
-Three keys, each a JSON blob in `kv_store` (originally `window.storage` in the Claude Artifact version):
+Four keys, each a JSON blob in `kv_store` (originally `window.storage` in the Claude Artifact version):
 - `snackplan:core:v1`: library, archived weeks, exposure counts. Library snacks may carry `tags: ["weekday-dinner"]`; snacks saved before tags existed simply have no `tags` field. They may also carry `method` (the full recipe text, one step per line; `steps` stays the short card summary) and `cookTimes` (seconds, one per finished cooking session; the displayed time is their average, see `cookMinutes`). Older snacks have neither field. `sections` maps a lowercased ingredient name to the shopping-list section Claude chose for it (absent in older saves). A hand-typed ingredient carries `guessed: true` until it has been sorted.
 - `snackplan:week:v1`: the current week (suggestions, picks, prepped, ratings, list state, and `dinners`: a map of day index, Monday = 0 to Sunday = 6, to a library recipe id). A planned dinner is always also in `selected`, which is what the shopping list and Log read. Weeks saved before dinners existed have no `dinners` field and load as empty.
+- `snackplan:nextweek:v1`: next week's plan, same shape as `snackplan:week:v1` with next Monday as its `id`. On load, if the stored current week is out of date it is archived as before, and a stored next week whose `id` is now this Monday becomes the current week. A next week with any other `id` is replaced by an empty one. Next week's `prepped` and `logs` stay empty because cooking and rating only apply to the current week.
 - `snackplan:pantry:v1`: ingredients always on hand
 
-One more key lives in the browser's `localStorage`, not Supabase: `snackplan:cooking:v1`, the in-progress cooking session `{ id, startedAt }`. It is per device on purpose, and is removed on Finished or Cook Later.
+Two more keys live in the browser's `localStorage`, not Supabase, both per device on purpose:
+- `snackplan:cooking:v1`: the in-progress cooking session `{ id, startedAt }`, removed on Finished or Cook Later.
+- `snackplan:listview:v1`: the shopping list filters `{ show: ["this", "next"], hideBought }`.
 
 Row-level security allows only the `authenticated` role to select, insert and update (migration `0002_auth.sql`). Users sign in with Supabase Auth email/password; sign-ups are disabled in the dashboard and accounts are created by hand.
 

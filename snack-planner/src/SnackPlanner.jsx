@@ -13,6 +13,7 @@ import { supabase, supabaseConfigured } from "./lib/supabaseClient";
 
 const KEY_CORE = "snackplan:core:v1";     // library + archived weeks + exposure counts
 const KEY_WEEK = "snackplan:week:v1";     // this week: suggestions, picks, prepped, list state
+const KEY_NEXT = "snackplan:nextweek:v1"; // next week's plan, made ahead; becomes "this week" on Monday
 const KEY_HAVE = "snackplan:pantry:v1";   // ingredients we always have at home
 
 async function loadKey(key, fallback) {
@@ -46,6 +47,13 @@ function weekStartOf(d = new Date()) {
   const dow = (x.getDay() + 6) % 7; // Monday = 0
   x.setDate(x.getDate() - dow);
   return x.toISOString().slice(0, 10);
+}
+
+// The Monday after the week that `id` starts.
+function nextWeekId(id = weekStartOf()) {
+  const d = new Date(id + "T12:00:00");
+  d.setDate(d.getDate() + 7);
+  return weekStartOf(d);
 }
 
 function prettyWeek(id) {
@@ -798,6 +806,18 @@ function withoutRecipe(w, id) {
   };
 }
 
+// A week's suggestions, refreshed with any library edits made since.
+function poolOf(w, library) {
+  const byId = new Map(library.map((s) => [s.id, s]));
+  return (w.suggestions || []).map((s) => byId.get(s.id) ? { ...byId.get(s.id), _reason: s._reason } : s);
+}
+
+// The recipes chosen for a week (dinners and snacks).
+function chosenOf(w, library, pool) {
+  const byId = new Map([...library, ...pool].map((s) => [s.id, s]));
+  return (w.selected || []).map((id) => byId.get(id)).filter(Boolean);
+}
+
 function SnackPlannerApp({ onSignOut }) {
   const [tab, setTab] = useState("week");
   const [weekMode, setWeekMode] = useState("dinners"); // "dinners" | "snacks"
@@ -808,6 +828,8 @@ function SnackPlannerApp({ onSignOut }) {
   const [weeks, setWeeks] = useState([]);
   const [exposures, setExposures] = useState({});
   const [week, setWeek] = useState(() => emptyWeek(weekStartOf()));
+  const [nextWeek, setNextWeek] = useState(() => emptyWeek(nextWeekId()));
+  const [planWhich, setPlanWhich] = useState("this"); // which week the Week tab (and Library buttons) plan: "this" | "next"
   const [pantry, setPantry] = useState([]);
   const [sectionMemory, setSectionMemory] = useState({}); // ingredient name -> section, learned from Claude
   const [cooking, setCooking] = useState(loadCooking); // { id, startedAt } while a recipe is being cooked
@@ -823,6 +845,7 @@ function SnackPlannerApp({ onSignOut }) {
       if (!supabaseConfigured) setStorageOk(false);
       const core = await loadKey(KEY_CORE, null);
       const storedWeek = await loadKey(KEY_WEEK, null);
+      const storedNext = await loadKey(KEY_NEXT, null);
       const have = await loadKey(KEY_HAVE, []);
       if (cancelled) return;
 
@@ -843,13 +866,18 @@ function SnackPlannerApp({ onSignOut }) {
         if (entries.length || (storedWeek.selected || []).length) {
           wks = [...wks, { id: storedWeek.id, entries }];
         }
-        cur = emptyWeek(thisWeekId);
+        cur = null;
       }
+      // Next week's plan, made ahead, becomes this week once its Monday arrives.
+      if (!cur && storedNext && storedNext.id === thisWeekId) cur = { ...emptyWeek(thisWeekId), ...storedNext };
+      const nextId = nextWeekId(thisWeekId);
+      const nxt = storedNext && storedNext.id === nextId ? { ...emptyWeek(nextId), ...storedNext } : emptyWeek(nextId);
 
       setLibrary(lib);
       setWeeks(wks);
       setExposures(core?.exposures || computeExposures(wks));
       setWeek(cur || emptyWeek(thisWeekId));
+      setNextWeek(nxt);
       setPantry(Array.isArray(have) ? have : []);
       setSectionMemory(core?.sections || {});
       setReady(true);
@@ -866,6 +894,7 @@ function SnackPlannerApp({ onSignOut }) {
   }, [library, weeks, exposures, sectionMemory, ready]);
 
   useEffect(() => { if (ready) saveKey(KEY_WEEK, week); }, [week, ready]);
+  useEffect(() => { if (ready) saveKey(KEY_NEXT, nextWeek); }, [nextWeek, ready]);
   useEffect(() => { if (ready) saveKey(KEY_HAVE, pantry); }, [pantry, ready]);
 
   // A session whose recipe has since been deleted can't be finished; drop it.
@@ -890,24 +919,29 @@ function SnackPlannerApp({ onSignOut }) {
 
   /* ------- suggestions ------- */
 
-  const suggestionPool = useMemo(() => {
-    const byId = new Map(library.map((s) => [s.id, s]));
-    return (week.suggestions || []).map((s) => byId.get(s.id) ? { ...byId.get(s.id), _reason: s._reason } : s);
-  }, [week.suggestions, library]);
+  // The week being planned on the Week tab. Cooking, prepping and rating always
+  // apply to this week; next week can only be planned.
+  const isNext = planWhich === "next";
+  const plan = isNext ? nextWeek : week;
+  const setPlan = isNext ? setNextWeek : setWeek;
 
-  const selectedSnacks = useMemo(() => {
-    const byId = new Map([...library, ...suggestionPool].map((s) => [s.id, s]));
-    return (week.selected || []).map((id) => byId.get(id)).filter(Boolean);
-  }, [week.selected, library, suggestionPool]);
+  const suggestionPool = useMemo(() => poolOf(week, library), [week.suggestions, library]);
+  const nextPool = useMemo(() => poolOf(nextWeek, library), [nextWeek.suggestions, library]);
+  const planPool = isNext ? nextPool : suggestionPool;
+
+  const selectedSnacks = useMemo(() => chosenOf(week, library, suggestionPool), [week.selected, library, suggestionPool]);
+  const nextSelected = useMemo(() => chosenOf(nextWeek, library, nextPool), [nextWeek.selected, library, nextPool]);
+  const planSelected = isNext ? nextSelected : selectedSnacks;
 
   // Tagged recipes are dinners; everything else is a snack. Snack suggestions never include dinners.
   const dinnerLibrary = useMemo(() => library.filter((s) => hasTag(s, DINNER_TAG)), [library]);
   const snackLibrary = useMemo(() => library.filter((s) => !hasTag(s, DINNER_TAG)), [library]);
-  const plannedCount = DINNER_DAYS.filter((d) => library.some((s) => s.id === week.dinners?.[d])).length;
-  const snackCount = selectedSnacks.filter((s) => !hasTag(s, DINNER_TAG)).length;
+  const plannedCount = DINNER_DAYS.filter((d) => library.some((s) => s.id === plan.dinners?.[d])).length;
+  const snackCount = planSelected.filter((s) => !hasTag(s, DINNER_TAG)).length;
 
   async function buildWeek({ append = false } = {}) {
     setError(null);
+    const week = plan, setWeek = setPlan; // suggestions go to the week being planned
     const libOnly = week.libraryOnly;
     const existing = append ? (week.suggestions || []) : [];
     const exclude = new Set(existing.map((s) => s.id));
@@ -942,13 +976,13 @@ function SnackPlannerApp({ onSignOut }) {
   }
 
   function toggleSelected(snack) {
-    setWeek((w) => {
+    setPlan((w) => {
       const has = w.selected.includes(snack.id);
       return { ...w, selected: has ? w.selected.filter((x) => x !== snack.id) : [...w.selected, snack.id],
                prepped: has ? w.prepped.filter((x) => x !== snack.id) : w.prepped };
     });
     // A generated idea earns its place in the library the moment it's chosen.
-    if (!library.some((s) => s.id === snack.id) && !week.selected.includes(snack.id)) {
+    if (!library.some((s) => s.id === snack.id) && !plan.selected.includes(snack.id)) {
       const { _reason, ...clean } = snack;
       setLibrary((lib) => [...lib, clean]);
     }
@@ -1065,8 +1099,9 @@ function SnackPlannerApp({ onSignOut }) {
   // Pin a specific library snack to this week, and show it on the Week tab even
   // if it wasn't among the suggestions. Tapping again takes it back out.
   function toggleInWeek(snack) {
-    const inWeek = week.selected.includes(snack.id);
-    setWeek((w) => {
+    const inWeek = plan.selected.includes(snack.id);
+    const which = isNext ? "next week" : "this week";
+    setPlan((w) => {
       if (inWeek) return withoutRecipe(w, snack.id);
       const shown = w.suggestions.some((s) => s.id === snack.id);
       return {
@@ -1075,7 +1110,7 @@ function SnackPlannerApp({ onSignOut }) {
         suggestions: shown ? w.suggestions : [{ ...snack, _reason: "Added from library" }, ...w.suggestions],
       };
     });
-    flash(inWeek ? `Removed ${snack.title} from this week` : `Added ${snack.title} to this week`);
+    flash(inWeek ? `Removed ${snack.title} from ${which}` : `Added ${snack.title} to ${which}`);
   }
 
   /* ------- dinners ------- */
@@ -1083,7 +1118,7 @@ function SnackPlannerApp({ onSignOut }) {
   // Put a dinner on a day (replacing whatever was there). It joins `selected` so
   // the shopping list and Log pick it up like any other chosen recipe.
   function assignDinner(day, snack) {
-    setWeek((w) => {
+    setPlan((w) => {
       const dinners = { ...(w.dinners || {}), [day]: snack.id };
       const prev = (w.dinners || {})[day];
       let next = { ...w, dinners };
@@ -1096,7 +1131,7 @@ function SnackPlannerApp({ onSignOut }) {
   }
 
   function clearDinner(day) {
-    setWeek((w) => {
+    setPlan((w) => {
       const prev = (w.dinners || {})[day];
       if (!prev) return w;
       const dinners = { ...w.dinners };
@@ -1110,7 +1145,7 @@ function SnackPlannerApp({ onSignOut }) {
   // Empty every weekday. The dinners also leave the week's chosen and cooked lists;
   // ratings already logged stay in History and on the recipes.
   function clearDinnersWeek() {
-    setWeek((w) => {
+    setPlan((w) => {
       const ids = new Set(Object.values(w.dinners || {}));
       return {
         ...w,
@@ -1119,12 +1154,13 @@ function SnackPlannerApp({ onSignOut }) {
         prepped: w.prepped.filter((x) => !ids.has(x)),
       };
     });
-    flash("Cleared the week's dinners");
+    flash(isNext ? "Cleared next week's dinners" : "Cleared the week's dinners");
   }
 
   // Fill every empty weekday from the library's dinners, using the same cooldown and
   // variety rules as snack suggestions.
   function fillDinners() {
+    const week = plan, setWeek = setPlan;
     const dinners = week.dinners || {};
     const empty = DINNER_DAYS.filter((d) => !library.some((s) => s.id === dinners[d]));
     const planned = new Set(Object.values(dinners));
@@ -1148,7 +1184,9 @@ function SnackPlannerApp({ onSignOut }) {
 
   function removeFromLibrary(id) {
     setLibrary((lib) => lib.filter((s) => s.id !== id));
-    setWeek((w) => ({ ...withoutRecipe(w, id), suggestions: w.suggestions.filter((s) => s.id !== id) }));
+    const drop = (w) => ({ ...withoutRecipe(w, id), suggestions: w.suggestions.filter((s) => s.id !== id) });
+    setWeek(drop);
+    setNextWeek(drop);
   }
 
   const needsLogging = useMemo(
@@ -1180,7 +1218,7 @@ function SnackPlannerApp({ onSignOut }) {
           <div className="flex items-end justify-between gap-3">
             <div>
               <div className="text-[13px] font-extrabold text-muted mb-1.5">
-                {prettyWeek(week.id)}
+                {prettyWeek(tab === "week" || tab === "library" ? plan.id : week.id)}
                 <button onClick={onSignOut} className="ml-3 text-xs font-bold underline">Sign out</button>
               </div>
               <h1 className="font-display text-[34px] leading-none font-semibold tracking-tight">
@@ -1225,22 +1263,26 @@ function SnackPlannerApp({ onSignOut }) {
         {tab === "week" && (
           <WeekView
             mode={weekMode} setMode={setWeekMode}
-            week={week} setWeek={setWeek} pool={suggestionPool} busy={busy}
+            planWhich={planWhich} setPlanWhich={setPlanWhich}
+            week={plan} setWeek={setPlan} pool={planPool} busy={busy}
             library={library} dinnerLibrary={dinnerLibrary}
             onBuild={buildWeek} onToggleSelect={toggleSelected} onTogglePrepped={togglePrepped}
-            onStartCooking={startCooking}
+            onStartCooking={isNext ? null : startCooking}
             onAssignDinner={assignDinner} onClearDinner={clearDinner} onFillDinners={fillDinners}
             onClearDinnersWeek={clearDinnersWeek}
             onGoToLibrary={() => setTab("library")}
-            selectedCount={week.selected.length} onGoToList={() => setTab("list")}
+            selectedCount={plan.selected.length} onGoToList={() => setTab("list")}
           />
         )}
 
         {tab === "list" && (
           <ShoppingView
-            snacks={selectedSnacks} week={week} setWeek={setWeek}
+            lists={[
+              { id: "this", label: "This week", snacks: selectedSnacks, week, setWeek },
+              { id: "next", label: "Next week", snacks: nextSelected, week: nextWeek, setWeek: setNextWeek },
+            ]}
             pantry={pantry} setPantry={setPantry} flash={flash}
-            onGoToWeek={() => setTab("week")}
+            onGoToWeek={(which) => { if (which === "this" || which === "next") setPlanWhich(which); setTab("week"); }}
           />
         )}
 
@@ -1255,7 +1297,7 @@ function SnackPlannerApp({ onSignOut }) {
         {tab === "library" && (
           <LibraryView
             library={library} onAdd={addToLibrary} onRemove={removeFromLibrary} onUpdate={updateLibrarySnack}
-            week={week} selectedIds={week.selected} onToggleInWeek={toggleInWeek} onToggleTag={toggleLibraryTag}
+            week={plan} isNext={isNext} selectedIds={plan.selected} onToggleInWeek={toggleInWeek} onToggleTag={toggleLibraryTag}
             onAssignDinner={assignDinner} onCookNow={startCooking}
             busy={busy} setBusy={setBusy} flash={flash}
           />
@@ -1312,12 +1354,23 @@ function SnackPlannerApp({ onSignOut }) {
 /* -------------------------------------------------------------- week view */
 
 function WeekView({
-  mode, setMode, week, setWeek, pool, busy, library, dinnerLibrary,
+  mode, setMode, planWhich, setPlanWhich, week, setWeek, pool, busy, library, dinnerLibrary,
   onBuild, onToggleSelect, onTogglePrepped, onStartCooking, onAssignDinner, onClearDinner, onFillDinners,
   onClearDinnersWeek, onGoToLibrary, selectedCount, onGoToList,
 }) {
+  const isNext = planWhich === "next";
   return (
     <div>
+      <div className="px-5 mb-3 flex gap-2">
+        {[["this", "This week"], ["next", "Next week"]].map(([id, label]) => (
+          <Pill key={id} active={planWhich === id} onClick={() => setPlanWhich(id)}>{label}</Pill>
+        ))}
+      </div>
+      {isNext && (
+        <p className="px-5 -mt-1 mb-3 text-xs font-bold text-muted">
+          Planning ahead. This becomes your week on Monday; cooking and rating start then.
+        </p>
+      )}
       <div className="px-5 mb-4">
         <div className="flex p-[3px] bg-white border-2 border-ink rounded-[18px] shadow-sticker">
           {[["dinners", "Dinners"], ["snacks", "Snacks"]].map(([id, label]) => (
@@ -1333,14 +1386,14 @@ function WeekView({
 
       {mode === "dinners" ? (
         <DinnersView
-          week={week} library={library} dinnerLibrary={dinnerLibrary}
+          week={week} isNext={isNext} library={library} dinnerLibrary={dinnerLibrary}
           onAssign={onAssignDinner} onClear={onClearDinner} onFill={onFillDinners}
           onClearWeek={onClearDinnersWeek}
           onTogglePrepped={onTogglePrepped} onStartCooking={onStartCooking} onGoToLibrary={onGoToLibrary}
         />
       ) : (
         <SnacksView
-          week={week} setWeek={setWeek} pool={pool} library={library} busy={busy}
+          week={week} isNext={isNext} setWeek={setWeek} pool={pool} library={library} busy={busy}
           onBuild={onBuild} onToggleSelect={onToggleSelect} onTogglePrepped={onTogglePrepped}
           onStartCooking={onStartCooking}
         />
@@ -1366,7 +1419,7 @@ function WeekView({
 
 const TILE_BG = ["bg-peach", "bg-mint", "bg-butter"];
 
-function DinnersView({ week, library, dinnerLibrary, onAssign, onClear, onFill, onClearWeek, onTogglePrepped, onStartCooking, onGoToLibrary }) {
+function DinnersView({ week, isNext, library, dinnerLibrary, onAssign, onClear, onFill, onClearWeek, onTogglePrepped, onStartCooking, onGoToLibrary }) {
   const [pickDay, setPickDay] = useState(null); // weekday being filled or swapped
   const [confirmClear, setConfirmClear] = useState(false);
   const byId = useMemo(() => new Map(library.map((s) => [s.id, s])), [library]);
@@ -1374,7 +1427,8 @@ function DinnersView({ week, library, dinnerLibrary, onAssign, onClear, onFill, 
   const dinnerOf = (d) => byId.get(dinners[d]) || null;
 
   const today = todayIndex();
-  const tonight = DINNER_DAYS.includes(today) ? today : null;
+  // Next week has no "tonight": every day is a tile, and nothing can be marked cooked yet.
+  const tonight = !isNext && DINNER_DAYS.includes(today) ? today : null;
   const tileDays = DINNER_DAYS.filter((d) => d !== tonight);
   const emptyCount = DINNER_DAYS.filter((d) => !dinnerOf(d)).length;
   const plannedCount = DINNER_DAYS.length - emptyCount;
@@ -1472,7 +1526,7 @@ function DinnersView({ week, library, dinnerLibrary, onAssign, onClear, onFill, 
               </button>
             );
           }
-          const cooked = week.prepped.includes(s.id);
+          const cooked = !isNext && week.prepped.includes(s.id);
           return (
             <article key={d}
                      className={`min-h-[148px] border-2 border-ink rounded-[22px] shadow-sticker p-2.5 pl-3 flex flex-col gap-1.5 ${cooked ? "bg-white" : TILE_BG[d % TILE_BG.length]}`}>
@@ -1480,8 +1534,10 @@ function DinnersView({ week, library, dinnerLibrary, onAssign, onClear, onFill, 
                 <span className={`border-2 border-ink rounded-full px-2.5 py-0.5 font-display text-sm font-semibold ${cooked ? "bg-peach" : "bg-white"}`}>
                   {info.short} {info.date}
                 </span>
-                <CheckCircle on={cooked} onClick={() => onTogglePrepped(s.id)} size={40}
-                             label={cooked ? `Unmark ${info.long} dinner as cooked` : `Mark ${info.long} dinner as cooked`} />
+                {!isNext && (
+                  <CheckCircle on={cooked} onClick={() => onTogglePrepped(s.id)} size={40}
+                               label={cooked ? `Unmark ${info.long} dinner as cooked` : `Mark ${info.long} dinner as cooked`} />
+                )}
               </div>
               <button onClick={() => setPickDay(d)} aria-label={`${s.title}, ${info.long}. Change dinner`}
                       className="text-left font-display text-[15px] font-semibold leading-tight">
@@ -1504,14 +1560,14 @@ function DinnersView({ week, library, dinnerLibrary, onAssign, onClear, onFill, 
             <div className="flex gap-2 mt-3">
               <button onClick={() => setConfirmClear(false)} className="btn-plain flex-1">Keep them</button>
               <button onClick={() => { onClearWeek(); setConfirmClear(false); }} className="btn-primary flex-1">
-                Clear week
+                {isNext ? "Clear next week" : "Clear week"}
               </button>
             </div>
           </div>
         ) : (
           <button onClick={() => setConfirmClear(true)}
                   className="mt-4 w-full min-h-[48px] rounded-[18px] border-2 border-dashed border-dim font-display text-[15px] font-semibold flex items-center justify-center gap-1.5">
-            <Trash2 size={16} /> Clear week
+            <Trash2 size={16} /> {isNext ? "Clear next week" : "Clear week"}
           </button>
         )
       )}
@@ -1587,7 +1643,7 @@ function DinnerPicker({ dinners, week, day, current, onPick, onClear, onGoToLibr
 
 /* ---- snacks: the suggestion list */
 
-function SnacksView({ week, setWeek, pool: allPool, library, busy, onBuild, onToggleSelect, onTogglePrepped, onStartCooking }) {
+function SnacksView({ week, isNext, setWeek, pool: allPool, library, busy, onBuild, onToggleSelect, onTogglePrepped, onStartCooking }) {
   const pool = allPool.filter((s) => !hasTag(s, DINNER_TAG));
   const [tierFilter, setTierFilter] = useState([]);
   const [chosenOnly, setChosenOnly] = useState(false);
@@ -1649,7 +1705,7 @@ function SnacksView({ week, setWeek, pool: allPool, library, busy, onBuild, onTo
       {!base.length && (
         <Empty icon={Carrot}>
           {chosenOnly
-            ? "No snacks chosen for this week yet. Turn off the Chosen filter and tick the ones you want."
+            ? `No snacks chosen for ${isNext ? "next" : "this"} week yet. Turn off the Chosen filter and tick the ones you want.`
             : "Nothing planned yet. Suggestions pull half from your library and half from new ideas, skipping anything you made in the last few weeks."}
         </Empty>
       )}
@@ -1662,7 +1718,7 @@ function SnacksView({ week, setWeek, pool: allPool, library, busy, onBuild, onTo
             prepped={week.prepped.includes(s.id)}
             onSelect={() => onToggleSelect(s)}
             onPrepped={() => onTogglePrepped(s.id)}
-            onStartCooking={() => onStartCooking(s.id)}
+            onStartCooking={onStartCooking && (() => onStartCooking(s.id))}
           />
         ))}
       </div>
@@ -1753,7 +1809,7 @@ function SnackCard({ snack, selected, prepped, onSelect, onPrepped, onStartCooki
             </div>
           )}
 
-          {selected && (prepped ? (
+          {selected && onStartCooking && (prepped ? (
             <button onClick={onPrepped} aria-pressed className="btn mt-3 w-full text-sm bg-berry text-white shadow-sticker-sm">
               <Check size={15} strokeWidth={3} /> Prepped
             </button>
@@ -1860,14 +1916,127 @@ function CookingScreen({ snack, startedAt, onFinish, onLater, onSaveMethod }) {
 
 /* ---------------------------------------------------------- shopping view */
 
-function ShoppingView({ snacks, week, setWeek, pantry, setPantry, flash, onGoToWeek }) {
+// Which weeks the list shows and whether bought items are hidden. A per-device
+// preference, so it lives in localStorage rather than the shared data.
+const KEY_LIST_VIEW = "snackplan:listview:v1";
+
+function loadListView() {
+  try {
+    const v = JSON.parse(localStorage.getItem(KEY_LIST_VIEW));
+    if (v && Array.isArray(v.show) && v.show.length) return { show: v.show, hideBought: !!v.hideBought };
+  } catch {}
+  return { show: ["this", "next"], hideBought: false };
+}
+
+function saveListView(v) {
+  try { localStorage.setItem(KEY_LIST_VIEW, JSON.stringify(v)); } catch {}
+}
+
+const isHaveIn = (week, pantrySet, row) => !!week.have?.[row.key] || pantrySet.has(normName(row.name));
+
+// The still-to-buy part of one week's list as plain text.
+function weekListText(entry, pantrySet) {
+  const { week, snacks } = entry;
+  const { grouped } = buildList(snacks);
+  const lines = [];
+  for (const sec of SECTIONS) {
+    const items = (grouped[sec] || []).filter((r) => !isHaveIn(week, pantrySet, r) && !week.checked?.[r.key]);
+    const manual = (week.manual || []).filter((m) => m.section === sec && !m.checked);
+    if (!items.length && !manual.length) continue;
+    lines.push(SECTION_LABEL[sec]);
+    for (const r of items) lines.push(`- ${rowLabel(r)}`);
+    for (const m of manual) lines.push(`- ${m.name}`);
+    lines.push("");
+  }
+  return lines.join("\n").trim();
+}
+
+const hasListItems = (entry) => entry.snacks.length > 0 || (entry.week.manual || []).length > 0;
+
+function ShoppingView({ lists, pantry, setPantry, flash, onGoToWeek }) {
+  const [view, setView] = useState(loadListView);
+  const pantrySet = useMemo(() => new Set(pantry), [pantry]);
+  const visible = lists.filter((l) => view.show.includes(l.id));
+
+  function update(v) {
+    setView(v);
+    saveListView(v);
+  }
+  function toggleWeek(id) {
+    const on = view.show.includes(id);
+    if (on && view.show.length === 1) return; // always show at least one week
+    update({ ...view, show: on ? view.show.filter((x) => x !== id) : lists.map((l) => l.id).filter((x) => x === id || view.show.includes(x)) });
+  }
+
+  async function copy() {
+    const parts = visible
+      .map((l) => ({ l, text: weekListText(l, pantrySet) }))
+      .filter((p) => p.text)
+      .map(({ l, text }) => `Shopping list — ${l.label.toLowerCase()} (${prettyWeek(l.week.id)})\n\n${text}`);
+    const plainText = parts.join("\n\n") || "Nothing left to buy.";
+    try {
+      await navigator.clipboard.writeText(plainText);
+      flash("List copied");
+    } catch {
+      const ta = document.createElement("textarea");
+      ta.value = plainText;
+      ta.style.position = "fixed";
+      ta.style.opacity = "0";
+      document.body.appendChild(ta);
+      ta.select();
+      try { document.execCommand("copy"); flash("List copied"); }
+      catch { flash("Copy didn't work — select the text instead"); }
+      document.body.removeChild(ta);
+    }
+  }
+
+  if (!lists.some(hasListItems)) {
+    return (
+      <Empty icon={ShoppingBasket} action={
+        <button onClick={onGoToWeek} className="btn-primary">
+          Plan a week
+        </button>
+      }>
+        Plan dinners or choose snacks on the Week tab, for this week or next, and the list builds itself, with repeat ingredients added up.
+      </Empty>
+    );
+  }
+
+  return (
+    <div className="px-5">
+      <div className="flex gap-2 mb-3 overflow-x-auto py-1 -mx-5 px-5">
+        {lists.map((l) => (
+          <Pill key={l.id} active={view.show.includes(l.id)} onClick={() => toggleWeek(l.id)}>{l.label}</Pill>
+        ))}
+        <Pill active={view.hideBought} onClick={() => update({ ...view, hideBought: !view.hideBought })}>
+          Hide bought
+        </Pill>
+      </div>
+      <div className="flex justify-end mb-4">
+        <button onClick={copy} className="btn-plain shadow-sticker-sm text-sm">
+          <Copy size={15} /> Copy as text
+        </button>
+      </div>
+
+      <div className="space-y-7">
+        {visible.map((l) => (
+          <WeekList key={l.id} entry={l} pantrySet={pantrySet} setPantry={setPantry}
+                    hideBought={view.hideBought} onGoToWeek={onGoToWeek} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// One week's part of the shopping list: its checked, "have it" and hand-added items.
+function WeekList({ entry, pantrySet, setPantry, hideBought, onGoToWeek }) {
+  const { label, snacks, week, setWeek } = entry;
   const { grouped, rows } = useMemo(() => buildList(snacks), [snacks]);
   const [showHave, setShowHave] = useState(false);
   const [draft, setDraft] = useState("");
   const [draftSection, setDraftSection] = useState("produce");
 
-  const pantrySet = useMemo(() => new Set(pantry), [pantry]);
-  const isHave = (row) => !!week.have?.[row.key] || pantrySet.has(normName(row.name));
+  const isHave = (row) => isHaveIn(week, pantrySet, row);
 
   function toggleCheck(key) {
     setWeek((w) => ({ ...w, checked: { ...w.checked, [key]: !w.checked?.[key] } }));
@@ -1901,63 +2070,30 @@ function ShoppingView({ snacks, week, setWeek, pantry, setPantry, flash, onGoToW
   }
 
   const haveRows = rows.filter(isHave);
-
-  const plainText = useMemo(() => {
-    const lines = [`Shopping list — week of ${prettyWeek(week.id)}`, ""];
-    for (const sec of SECTIONS) {
-      const items = (grouped[sec] || []).filter((r) => !isHave(r) && !week.checked?.[r.key]);
-      const manual = (week.manual || []).filter((m) => m.section === sec && !m.checked);
-      if (!items.length && !manual.length) continue;
-      lines.push(SECTION_LABEL[sec]);
-      for (const r of items) lines.push(`- ${rowLabel(r)}`);
-      for (const m of manual) lines.push(`- ${m.name}`);
-      lines.push("");
-    }
-    return lines.join("\n").trim();
-  }, [grouped, week, pantry]);
-
-  async function copy() {
-    try {
-      await navigator.clipboard.writeText(plainText);
-      flash("List copied");
-    } catch {
-      const ta = document.createElement("textarea");
-      ta.value = plainText;
-      ta.style.position = "fixed";
-      ta.style.opacity = "0";
-      document.body.appendChild(ta);
-      ta.select();
-      try { document.execCommand("copy"); flash("List copied"); }
-      catch { flash("Copy didn't work — select the text instead"); }
-      document.body.removeChild(ta);
-    }
-  }
-
-  if (!snacks.length && !(week.manual || []).length) {
-    return (
-      <Empty icon={ShoppingBasket} action={
-        <button onClick={onGoToWeek} className="btn-primary">
-          Plan this week
-        </button>
-      }>
-        Plan dinners or choose snacks on the Week tab and the list builds itself, with repeat ingredients added up.
-      </Empty>
-    );
-  }
+  const boughtCount = rows.filter((r) => !isHave(r) && week.checked?.[r.key]).length
+    + (week.manual || []).filter((m) => m.checked).length;
+  const empty = !hasListItems(entry);
 
   return (
-    <div className="px-5">
-      <div className="flex items-center justify-between mb-4 text-[13px] font-extrabold text-muted">
-        <span>{snacks.length} recipe{snacks.length === 1 ? "" : "s"}</span>
-        <button onClick={copy} className="btn-plain shadow-sticker-sm text-sm">
-          <Copy size={15} /> Copy as text
-        </button>
+    <section>
+      <div className="flex items-baseline justify-between gap-2 mb-3">
+        <h2 className="font-display text-xl font-semibold">{label}</h2>
+        <span className="text-[13px] font-extrabold text-muted">
+          {prettyWeek(week.id)} · {snacks.length} recipe{snacks.length === 1 ? "" : "s"}
+        </span>
       </div>
+
+      {empty && (
+        <div className="sticker bg-butter p-3.5 mb-3">
+          <p className="text-[15px] font-bold">Nothing planned for {label.toLowerCase()} yet.</p>
+          <button onClick={() => onGoToWeek(entry.id)} className="btn-primary mt-3">Plan it</button>
+        </div>
+      )}
 
       <div className="space-y-4">
         {SECTIONS.map((sec) => {
-          const items = (grouped[sec] || []).filter((r) => !isHave(r));
-          const manual = (week.manual || []).filter((m) => m.section === sec);
+          const items = (grouped[sec] || []).filter((r) => !isHave(r) && !(hideBought && week.checked?.[r.key]));
+          const manual = (week.manual || []).filter((m) => m.section === sec && !(hideBought && m.checked));
           if (!items.length && !manual.length) return null;
           return (
             <div key={sec}>
@@ -1999,17 +2135,23 @@ function ShoppingView({ snacks, week, setWeek, pantry, setPantry, flash, onGoToW
         })}
       </div>
 
+      {hideBought && boughtCount > 0 && (
+        <p className="mt-3 px-1 text-[13px] font-extrabold text-muted">
+          {boughtCount} bought item{boughtCount === 1 ? "" : "s"} hidden
+        </p>
+      )}
+
       <div className="mt-5">
         <div className="flex gap-2">
           <input
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
             onKeyDown={(e) => { if (e.key === "Enter") addManual(); }}
-            placeholder="Add something else"
-            aria-label="Add something else"
+            placeholder={`Add something else for ${label.toLowerCase()}`}
+            aria-label={`Add something else for ${label.toLowerCase()}`}
             className="field flex-1 min-w-0"
           />
-          <button onClick={addManual} aria-label="Add item"
+          <button onClick={addManual} aria-label={`Add item to ${label.toLowerCase()}`}
                   className="btn-primary w-12 px-0 shrink-0">
             <Plus size={22} strokeWidth={2.6} />
           </button>
@@ -2047,7 +2189,7 @@ function ShoppingView({ snacks, week, setWeek, pantry, setPantry, flash, onGoToW
           )}
         </div>
       )}
-    </div>
+    </section>
   );
 }
 
@@ -2117,7 +2259,7 @@ function LogView({ week, pool, onTogglePrepped, onLog, onGoToWeek }) {
 
 /* ----------------------------------------------------------- library view */
 
-function LibraryView({ library, onAdd, onRemove, onUpdate, week, selectedIds, onToggleInWeek, onToggleTag, onAssignDinner, onCookNow, busy, setBusy, flash }) {
+function LibraryView({ library, onAdd, onRemove, onUpdate, week, isNext, selectedIds, onToggleInWeek, onToggleTag, onAssignDinner, onCookNow, busy, setBusy, flash }) {
   const [q, setQ] = useState("");
   const [kind, setKind] = useState("all"); // "all" | "dinner" | "snack"
   const [sheet, setSheet] = useState(null); // "url" | "manual"
@@ -2198,6 +2340,12 @@ function LibraryView({ library, onAdd, onRemove, onUpdate, week, selectedIds, on
         ))}
       </div>
 
+      {isNext && (
+        <p className="mb-3 text-xs font-bold text-muted">
+          Adding to next week. Switch back to this week on the Week tab.
+        </p>
+      )}
+
       {!filtered.length && (
         <Empty icon={BookMarked}>Nothing matches that. Try a vegetable name or switch the filter.</Empty>
       )}
@@ -2206,7 +2354,7 @@ function LibraryView({ library, onAdd, onRemove, onUpdate, week, selectedIds, on
         {filtered.map((s) => (
           <LibraryCard
             key={s.id} snack={s}
-            inWeek={(selectedIds || []).includes(s.id)}
+            inWeek={(selectedIds || []).includes(s.id)} isNext={isNext}
             onToggleInWeek={() => (
               hasTag(s, DINNER_TAG) && !(selectedIds || []).includes(s.id) ? setDayFor(s) : onToggleInWeek(s)
             )}
@@ -2218,7 +2366,7 @@ function LibraryView({ library, onAdd, onRemove, onUpdate, week, selectedIds, on
         ))}
       </div>
 
-      <Sheet open={!!dayFor} onClose={() => setDayFor(null)} title="Which day?">
+      <Sheet open={!!dayFor} onClose={() => setDayFor(null)} title={isNext ? "Which day next week?" : "Which day?"}>
         {dayFor && (
           <div className="space-y-2.5">
             {DINNER_DAYS.map((d) => {
@@ -2301,7 +2449,7 @@ function LibraryView({ library, onAdd, onRemove, onUpdate, week, selectedIds, on
   );
 }
 
-function LibraryCard({ snack: s, inWeek, onToggleInWeek, onToggleTag, onCookNow, onEdit, onRemove }) {
+function LibraryCard({ snack: s, inWeek, isNext, onToggleInWeek, onToggleTag, onCookNow, onEdit, onRemove }) {
   const [open, setOpen] = useState(false);
   const last = lastVerdict(s);
   const dinner = hasTag(s, DINNER_TAG);
@@ -2365,8 +2513,8 @@ function LibraryCard({ snack: s, inWeek, onToggleInWeek, onToggleTag, onCookNow,
       <div className="flex gap-2 mt-3 flex-wrap items-center">
         <button onClick={onToggleInWeek} aria-pressed={inWeek}
                 className={`btn text-sm ${inWeek ? "bg-berry text-white shadow-sticker-sm" : "bg-white text-ink"}`}>
-          {inWeek ? <><Check size={15} strokeWidth={3} /> In this week</>
-                  : <><Plus size={15} strokeWidth={2.6} /> {dinner ? "Add to a day" : "Add to this week"}</>}
+          {inWeek ? <><Check size={15} strokeWidth={3} /> {isNext ? "In next week" : "In this week"}</>
+                  : <><Plus size={15} strokeWidth={2.6} /> {dinner ? "Add to a day" : isNext ? "Add to next week" : "Add to this week"}</>}
         </button>
         {open && (
           <button onClick={onToggleTag} aria-pressed={dinner}
