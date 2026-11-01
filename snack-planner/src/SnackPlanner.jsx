@@ -1248,7 +1248,7 @@ function SnackPlannerApp({ onSignOut }) {
                 {snackCount} snack{snackCount === 1 ? "" : "s"} chosen
               </span>
             )}
-            {tab === "list" && shopLists.some(hasListItems) && (
+            {tab === "list" && shopLists.some((l) => listView.show.includes(l.id) && hasListItems(l)) && (
               <button onClick={() => copyList(shopLists, listView, pantry, flash)} className="btn-plain shadow-sticker-sm text-sm shrink-0">
                 <Copy size={15} /> Copy
               </button>
@@ -1938,36 +1938,38 @@ function saveListView(v) {
   try { localStorage.setItem(KEY_LIST_VIEW, JSON.stringify(v)); } catch {}
 }
 
-const isHaveIn = (week, pantrySet, row) => !!week.have?.[row.key] || pantrySet.has(normName(row.name));
-
-// The still-to-buy part of one week's list as plain text.
-function weekListText(entry, pantrySet) {
-  const { week, snacks } = entry;
-  const { grouped } = buildList(snacks);
-  const lines = [];
-  for (const sec of SECTIONS) {
-    const items = (grouped[sec] || []).filter((r) => !isHaveIn(week, pantrySet, r) && !week.checked?.[r.key]);
-    const manual = (week.manual || []).filter((m) => m.section === sec && !m.checked);
-    if (!items.length && !manual.length) continue;
-    lines.push(SECTION_LABEL[sec]);
-    for (const r of items) lines.push(`- ${rowLabel(r)}`);
-    for (const m of manual) lines.push(`- ${m.name}`);
-    lines.push("");
-  }
-  return lines.join("\n").trim();
-}
-
 const hasListItems = (entry) => entry.snacks.length > 0 || (entry.week.manual || []).length > 0;
 
-// The still-to-buy items of the visible weeks, copied as plain text with a heading per week.
+/* The shopping list is one combined list over the visible weeks. Ticks, "have it"
+   and hand-added items are still stored per week (so they roll over with the week
+   and survive a week being hidden): a combined row is ticked when every visible week
+   that needs it has it ticked, and ticking it ticks it in each of those weeks. */
+function combineLists(lists, view, pantrySet) {
+  const visible = lists.filter((l) => view.show.includes(l.id));
+  const { rows, grouped } = buildList(visible.flatMap((l) => l.snacks));
+  const keysOf = new Map(visible.map((l) => [l.id, new Set(buildList(l.snacks).rows.map((r) => r.key))]));
+  const weeksFor = (row) => visible.filter((l) => keysOf.get(l.id).has(row.key));
+  const isChecked = (row) => weeksFor(row).every((l) => !!l.week.checked?.[row.key]);
+  const isHave = (row) => pantrySet.has(normName(row.name)) || weeksFor(row).some((l) => !!l.week.have?.[row.key]);
+  const manual = visible.flatMap((l) => (l.week.manual || []).map((m) => ({ ...m, list: l })));
+  const recipeCount = new Set(visible.flatMap((l) => l.snacks.map((s) => s.id))).size;
+  return { visible, rows, grouped, weeksFor, isChecked, isHave, manual, recipeCount };
+}
+
+// The still-to-buy items of the visible weeks, copied as plain text.
 async function copyList(lists, view, pantry, flash) {
-  const pantrySet = new Set(pantry);
-  const parts = lists
-    .filter((l) => view.show.includes(l.id))
-    .map((l) => ({ l, text: weekListText(l, pantrySet) }))
-    .filter((p) => p.text)
-    .map(({ l, text }) => `Shopping list — ${l.label.toLowerCase()} (${prettyWeek(l.week.id)})\n\n${text}`);
-  const plainText = parts.join("\n\n") || "Nothing left to buy.";
+  const { visible, grouped, isChecked, isHave, manual } = combineLists(lists, view, new Set(pantry));
+  const lines = [`Shopping list — ${visible.map((l) => prettyWeek(l.week.id)).join(" and ")}`, ""];
+  for (const sec of SECTIONS) {
+    const items = (grouped[sec] || []).filter((r) => !isHave(r) && !isChecked(r));
+    const extra = manual.filter((m) => m.section === sec && !m.checked);
+    if (!items.length && !extra.length) continue;
+    lines.push(SECTION_LABEL[sec]);
+    for (const r of items) lines.push(`- ${rowLabel(r)}`);
+    for (const m of extra) lines.push(`- ${m.name}`);
+    lines.push("");
+  }
+  const plainText = lines.length > 2 ? lines.join("\n").trim() : "Nothing left to buy.";
   try {
     await navigator.clipboard.writeText(plainText);
     flash("List copied");
@@ -1986,7 +1988,10 @@ async function copyList(lists, view, pantry, flash) {
 
 function ShoppingView({ lists, view, setView, pantry, setPantry, onGoToWeek }) {
   const pantrySet = useMemo(() => new Set(pantry), [pantry]);
-  const visible = lists.filter((l) => view.show.includes(l.id));
+  const { visible, rows, grouped, weeksFor, isChecked, isHave, manual, recipeCount } = combineLists(lists, view, pantrySet);
+  const [showHave, setShowHave] = useState(false);
+  const [draft, setDraft] = useState("");
+  const [draftSection, setDraftSection] = useState("produce");
 
   function update(v) {
     setView(v);
@@ -1996,6 +2001,35 @@ function ShoppingView({ lists, view, setView, pantry, setPantry, onGoToWeek }) {
     const on = view.show.includes(id);
     if (on && view.show.length === 1) return; // always show at least one week
     update({ ...view, show: on ? view.show.filter((x) => x !== id) : lists.map((l) => l.id).filter((x) => x === id || view.show.includes(x)) });
+  }
+
+  function toggleCheck(row) {
+    const on = !isChecked(row);
+    for (const l of weeksFor(row)) l.setWeek((w) => ({ ...w, checked: { ...w.checked, [row.key]: on } }));
+  }
+
+  function toggleHave(row) {
+    const n = normName(row.name);
+    const on = !isHave(row);
+    for (const l of weeksFor(row)) l.setWeek((w) => ({ ...w, have: { ...w.have, [row.key]: on } }));
+    setPantry((p) => (on ? [...new Set([...p, n])] : p.filter((x) => x !== n)));
+  }
+
+  // Hand-added items go to the earliest week shown.
+  function addManual() {
+    const text = draft.trim();
+    if (!text || !visible.length) return;
+    visible[0].setWeek((w) => ({
+      ...w,
+      manual: [...(w.manual || []), { id: newId(), name: text, section: draftSection, checked: false }],
+    }));
+    setDraft("");
+  }
+  function toggleManual(m) {
+    m.list.setWeek((w) => ({ ...w, manual: (w.manual || []).map((x) => (x.id === m.id ? { ...x, checked: !x.checked } : x)) }));
+  }
+  function removeManual(m) {
+    m.list.setWeek((w) => ({ ...w, manual: (w.manual || []).filter((x) => x.id !== m.id) }));
   }
 
   if (!lists.some(hasListItems)) {
@@ -2010,9 +2044,13 @@ function ShoppingView({ lists, view, setView, pantry, setPantry, onGoToWeek }) {
     );
   }
 
+  const haveRows = rows.filter(isHave);
+  const boughtCount = rows.filter((r) => !isHave(r) && isChecked(r)).length + manual.filter((m) => m.checked).length;
+  const empty = !visible.some(hasListItems);
+
   return (
     <div className="px-5">
-      <div className="flex gap-2 mb-4 overflow-x-auto py-1 -mx-5 px-5">
+      <div className="flex gap-2 mb-2 overflow-x-auto py-1 -mx-5 px-5">
         {lists.map((l) => (
           <Pill key={l.id} active={view.show.includes(l.id)} onClick={() => toggleWeek(l.id)}>{l.label}</Pill>
         ))}
@@ -2020,83 +2058,25 @@ function ShoppingView({ lists, view, setView, pantry, setPantry, onGoToWeek }) {
           Hide bought
         </Pill>
       </div>
-      <div className="space-y-7">
-        {visible.map((l) => (
-          <WeekList key={l.id} entry={l} pantrySet={pantrySet} setPantry={setPantry}
-                    hideBought={view.hideBought} onGoToWeek={onGoToWeek} />
-        ))}
-      </div>
-    </div>
-  );
-}
-
-// One week's part of the shopping list: its checked, "have it" and hand-added items.
-function WeekList({ entry, pantrySet, setPantry, hideBought, onGoToWeek }) {
-  const { label, snacks, week, setWeek } = entry;
-  const { grouped, rows } = useMemo(() => buildList(snacks), [snacks]);
-  const [showHave, setShowHave] = useState(false);
-  const [draft, setDraft] = useState("");
-  const [draftSection, setDraftSection] = useState("produce");
-
-  const isHave = (row) => isHaveIn(week, pantrySet, row);
-
-  function toggleCheck(key) {
-    setWeek((w) => ({ ...w, checked: { ...w.checked, [key]: !w.checked?.[key] } }));
-  }
-
-  function toggleHave(row) {
-    const n = normName(row.name);
-    const currentlyHave = isHave(row);
-    setWeek((w) => ({ ...w, have: { ...w.have, [row.key]: !currentlyHave } }));
-    setPantry((p) => (currentlyHave ? p.filter((x) => x !== n) : [...new Set([...p, n])]));
-  }
-
-  function addManual() {
-    const text = draft.trim();
-    if (!text) return;
-    setWeek((w) => ({
-      ...w,
-      manual: [...(w.manual || []), { id: newId(), name: text, section: draftSection, checked: false }],
-    }));
-    setDraft("");
-  }
-
-  function toggleManual(id) {
-    setWeek((w) => ({
-      ...w,
-      manual: (w.manual || []).map((m) => (m.id === id ? { ...m, checked: !m.checked } : m)),
-    }));
-  }
-  function removeManual(id) {
-    setWeek((w) => ({ ...w, manual: (w.manual || []).filter((m) => m.id !== id) }));
-  }
-
-  const haveRows = rows.filter(isHave);
-  const boughtCount = rows.filter((r) => !isHave(r) && week.checked?.[r.key]).length
-    + (week.manual || []).filter((m) => m.checked).length;
-  const empty = !hasListItems(entry);
-
-  return (
-    <section>
-      <div className="flex items-baseline justify-between gap-2 mb-3">
-        <h2 className="font-display text-xl font-semibold">{label}</h2>
-        <span className="text-[13px] font-extrabold text-muted">
-          {prettyWeek(week.id)} · {snacks.length} recipe{snacks.length === 1 ? "" : "s"}
-        </span>
-      </div>
+      <p className="mb-4 px-1 text-[13px] font-extrabold text-muted">
+        {recipeCount} recipe{recipeCount === 1 ? "" : "s"}
+        {view.hideBought && boughtCount > 0 && ` · ${boughtCount} bought item${boughtCount === 1 ? "" : "s"} hidden`}
+      </p>
 
       {empty && (
-        <div className="sticker bg-butter p-3.5 mb-3">
-          <p className="text-[15px] font-bold">Nothing planned for {label.toLowerCase()} yet.</p>
-          <button onClick={() => onGoToWeek(entry.id)} className="btn-primary mt-3">Plan it</button>
+        <div className="sticker bg-butter p-3.5 mb-4">
+          <p className="text-[15px] font-bold">
+            Nothing planned for {visible.length > 1 ? "these weeks" : visible[0].label.toLowerCase()} yet.
+          </p>
+          <button onClick={() => onGoToWeek(visible[0].id)} className="btn-primary mt-3">Plan it</button>
         </div>
       )}
 
       <div className="space-y-4">
         {SECTIONS.map((sec) => {
-          const items = (grouped[sec] || []).filter((r) => !isHave(r) && !(hideBought && week.checked?.[r.key]));
-          const manual = (week.manual || []).filter((m) => m.section === sec && !(hideBought && m.checked));
-          if (!items.length && !manual.length) return null;
+          const items = (grouped[sec] || []).filter((r) => !isHave(r) && !(view.hideBought && isChecked(r)));
+          const extra = manual.filter((m) => m.section === sec && !(view.hideBought && m.checked));
+          if (!items.length && !extra.length) return null;
           return (
             <div key={sec}>
               <h3 className={`inline-block ${SECTION_BG[sec]} border-2 border-ink rounded-full px-3 py-0.5 font-display text-sm font-semibold mb-2`}>
@@ -2104,10 +2084,10 @@ function WeekList({ entry, pantrySet, setPantry, hideBought, onGoToWeek }) {
               </h3>
               <div className="sticker overflow-hidden divide-y-2 divide-line">
                 {items.map((r) => {
-                  const done = !!week.checked?.[r.key];
+                  const done = isChecked(r);
                   return (
                     <div key={r.key} className="flex items-center min-h-[52px] pl-1 pr-1.5">
-                      <CheckBox on={done} onClick={() => toggleCheck(r.key)} label={`Check off ${r.name}`} />
+                      <CheckBox on={done} onClick={() => toggleCheck(r)} label={`Check off ${r.name}`} />
                       <div className="flex-1 min-w-0 py-2">
                         <span className={`text-[15px] font-extrabold block ${done ? "line-through text-muted" : ""}`}>
                           {rowLabel(r)}
@@ -2122,11 +2102,11 @@ function WeekList({ entry, pantrySet, setPantry, hideBought, onGoToWeek }) {
                     </div>
                   );
                 })}
-                {manual.map((m) => (
+                {extra.map((m) => (
                   <div key={m.id} className="flex items-center min-h-[52px] pl-1 pr-1.5">
-                    <CheckBox on={m.checked} onClick={() => toggleManual(m.id)} label={`Check off ${m.name}`} />
+                    <CheckBox on={m.checked} onClick={() => toggleManual(m)} label={`Check off ${m.name}`} />
                     <span className={`flex-1 min-w-0 text-[15px] font-extrabold ${m.checked ? "line-through text-muted" : ""}`}>{m.name}</span>
-                    <button onClick={() => removeManual(m.id)} aria-label={`Remove ${m.name}`} className="w-11 h-11 flex items-center justify-center shrink-0 text-muted">
+                    <button onClick={() => removeManual(m)} aria-label={`Remove ${m.name}`} className="w-11 h-11 flex items-center justify-center shrink-0 text-muted">
                       <Trash2 size={16} />
                     </button>
                   </div>
@@ -2137,23 +2117,17 @@ function WeekList({ entry, pantrySet, setPantry, hideBought, onGoToWeek }) {
         })}
       </div>
 
-      {hideBought && boughtCount > 0 && (
-        <p className="mt-3 px-1 text-[13px] font-extrabold text-muted">
-          {boughtCount} bought item{boughtCount === 1 ? "" : "s"} hidden
-        </p>
-      )}
-
       <div className="mt-5">
         <div className="flex gap-2">
           <input
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
             onKeyDown={(e) => { if (e.key === "Enter") addManual(); }}
-            placeholder={`Add something else for ${label.toLowerCase()}`}
-            aria-label={`Add something else for ${label.toLowerCase()}`}
+            placeholder="Add something else"
+            aria-label="Add something else"
             className="field flex-1 min-w-0"
           />
-          <button onClick={addManual} aria-label={`Add item to ${label.toLowerCase()}`}
+          <button onClick={addManual} aria-label="Add item"
                   className="btn-primary w-12 px-0 shrink-0">
             <Plus size={22} strokeWidth={2.6} />
           </button>
@@ -2191,7 +2165,7 @@ function WeekList({ entry, pantrySet, setPantry, hideBought, onGoToWeek }) {
           )}
         </div>
       )}
-    </section>
+    </div>
   );
 }
 

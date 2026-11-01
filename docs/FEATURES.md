@@ -57,13 +57,12 @@ Current behavior of the app. Update this file whenever a feature is added, chang
 - The round check on the other days' dinner tiles and the Log tab still mark a recipe cooked without timing it.
 
 ## List tab
-- Shows this week and next week as separate parts, each with its own heading, dates and recipe count. A week with nothing chosen says so and offers "Plan it".
-- Filter pills at the top: "This week" and "Next week" choose which parts are visible (at least one stays on), and "Hide bought" hides checked-off items (each week then says how many are hidden). These choices are remembered on the device.
-- Each week's list is built from that week's chosen recipes, dinners and snacks together. Duplicate ingredients (same name and unit) are summed, and rows used by several recipes say "for N recipes".
+- One combined list built from the chosen recipes (dinners and snacks) of the weeks shown. Duplicate ingredients (same name and unit) are summed across recipes and weeks, and rows used by several recipes say "for N recipes". A recipe chosen in both weeks counts twice. A line under the filters shows the recipe count.
+- Filter pills at the top: "This week" and "Next week" choose which weeks feed the list (at least one stays on), and "Hide bought" hides checked-off items (the summary line then says how many are hidden). These choices are remembered on the device. If the weeks shown have nothing chosen, the list says so and offers "Plan it".
 - Grouped by produce, dairy, pantry, frozen, other.
 - Sections for hand-typed ingredients (Add by hand, or new lines in Edit): saved first with a keyword guess, then Claude sorts any names it hasn't seen and the app remembers the answer, so each name is asked about once. If Claude can't be reached the keyword guess stays. Recipes from AI ideas, a link or a photo get their sections from Claude when they're created.
-- Check items off, mark "have it" (remembered in the pantry list), and add manual items. Ticks, "have it" and manual items belong to their week; each week has its own "Add something else" box.
-- "Copy" (next to the Shopping list title) copies what's still to buy for the visible weeks as text, under a heading per week.
+- Check items off, mark "have it" (remembered in the pantry list), and add manual items. Behind the scenes each week keeps its own ticks, "have it" marks and manual items, so they roll over with the week: ticking a combined row ticks it in every shown week that needs it, and a row shows as ticked only when all of those weeks have it ticked. Hiding a week keeps its ticks. "Add something else" adds to the earliest week shown (this week when both are on).
+- "Copy" (next to the Shopping list title) copies what's still to buy on the combined list as text.
 
 ## Log tab
 - Lists the week's chosen recipes plus anything cooked off-plan with "Cook Now". Prepped snacks and cooked dinners can be rated Loved it, Ate some, or Refused. Ratings drive future suggestions. Dinner cards show their day ("Tue dinner") and say "cooked" instead of "prepped".
