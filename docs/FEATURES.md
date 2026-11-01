@@ -17,7 +17,13 @@ Current behavior of the app. Update this file whenever a feature is added, chang
 - Dinners are never offered as snack suggestions. Snacks are never offered when planning dinners.
 
 ## Week tab
-A Dinners / Snacks toggle at the top. The header badge shows "N of 7 planned" on Dinners and "N snacks chosen" on Snacks. A "See the shopping list" button appears once anything is chosen.
+"This week" / "Next week" pills at the top choose which week you're planning, so next week can be planned and shopped for over the weekend. Below them, a Dinners / Snacks toggle. The header badge shows "N of 7 planned" on Dinners and "N snacks chosen" on Snacks. A "See the shopping list" button appears once anything is chosen. The date line in the header shows the week being planned.
+
+### Next week
+- Planned the same way as this week: dinner tiles, picker, "Fill empty days", "Clear next week", snack suggestions and the Chosen filter. Its suggestions and picks are kept separately from this week's.
+- Planning only: there's no Tonight card, no round "cooked" checks on tiles, and no "Start Cooking" on snack cards. Cooking and rating start once it becomes this week.
+- On Monday, next week's plan (including its shopping list ticks and hand-added items) becomes this week and a fresh, empty next week starts. Last week is archived to History as before.
+- The Library's add buttons follow the same choice (see Library tab).
 
 ### Dinners
 - One slot per day, Monday to Sunday. A dinner planned on a day is also chosen for the week, so it feeds the shopping list and the Log.
@@ -51,10 +57,13 @@ A Dinners / Snacks toggle at the top. The header badge shows "N of 7 planned" on
 - The round check on the other days' dinner tiles and the Log tab still mark a recipe cooked without timing it.
 
 ## List tab
-- Built from every chosen recipe, dinners and snacks together. Duplicate ingredients (same name and unit) are summed, and rows used by several recipes say "for N recipes".
+- Shows this week and next week as separate parts, each with its own heading, dates and recipe count. A week with nothing chosen says so and offers "Plan it".
+- Filter pills at the top: "This week" and "Next week" choose which parts are visible (at least one stays on), and "Hide bought" hides checked-off items (each week then says how many are hidden). These choices are remembered on the device.
+- Each week's list is built from that week's chosen recipes, dinners and snacks together. Duplicate ingredients (same name and unit) are summed, and rows used by several recipes say "for N recipes".
 - Grouped by produce, dairy, pantry, frozen, other.
 - Sections for hand-typed ingredients (Add by hand, or new lines in Edit): saved first with a keyword guess, then Claude sorts any names it hasn't seen and the app remembers the answer, so each name is asked about once. If Claude can't be reached the keyword guess stays. Recipes from AI ideas, a link or a photo get their sections from Claude when they're created.
-- Check items off, mark "have it" (remembered in the pantry list), add manual items, and "Copy as text".
+- Check items off, mark "have it" (remembered in the pantry list), and add manual items. Ticks, "have it" and manual items belong to their week; each week has its own "Add something else" box.
+- "Copy as text" copies what's still to buy for the visible weeks, under a heading per week.
 
 ## Log tab
 - Lists the week's chosen recipes plus anything cooked off-plan with "Cook Now". Prepped snacks and cooked dinners can be rated Loved it, Ate some, or Refused. Ratings drive future suggestions. Dinner cards show their day ("Tue dinner") and say "cooked" instead of "prepped".
@@ -70,11 +79,12 @@ A Dinners / Snacks toggle at the top. The header badge shows "N of 7 planned" on
 - Add, edit and picker popups open centered on the screen, scroll inside themselves when taller than the screen, and close with the X or the Escape key.
 - "Weekday dinner" tag: toggle it on any recipe from the library list. The toggle shows only when the card is expanded (like Edit); collapsed cards still show "Add to a day" on dinners.
 - "Cook Now" on every recipe opens the cooking screen straight away, without planning it (see Cooking).
+- The add buttons target the week chosen on the Week tab. With "Next week" chosen, the Library says so at the top, buttons read "Add to next week" / "In next week", and the day picker asks "Which day next week?". "Cook Now" always cooks today, whichever week is chosen.
 - "Add to this week" on a snack selects it for the current week (it appears on the Snacks view and feeds the shopping list). On a dinner the button reads "Add to a day" and asks which day. Tap "In this week" to take either back out (a dinner also leaves its day). A new set of snack suggestions replaces the Snacks cards but a pinned snack stays selected and on the list and log.
 
 ## History tab
 - Exposure meter per vegetable, out to 10 tries, with a "warming up" flag when recent ratings improve.
-- Past weeks with each verdict. Weeks roll over automatically on Monday, which also clears the planned dinners.
+- Past weeks with each verdict. Weeks roll over automatically on Monday: next week's plan (if any) becomes the current week, otherwise it starts empty.
 
 ## Known limits
 - No per-user data: every signed-in account sees and edits the same household data.

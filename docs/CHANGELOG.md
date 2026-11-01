@@ -3,6 +3,8 @@
 Newest first. Add an entry for every user-visible or infrastructure change.
 
 ## 2026-11-01
+- Next week can be planned ahead: "This week" / "Next week" pills on the Week tab, with the Library's add buttons following the choice. Next week is planning only (no cooking or rating) and becomes this week on Monday. New `snackplan:nextweek:v1` key (no migration needed).
+- The shopping list shows this week and next week as separate parts, with filter pills to choose the visible weeks and hide bought items (remembered per device in `localStorage`). "Copy as text" covers the visible weeks.
 - The "Weekday dinner" toggle on Library cards now shows only when a card is expanded.
 
 ## 2026-10-31
