@@ -2368,12 +2368,14 @@ function LibraryCard({ snack: s, inWeek, onToggleInWeek, onToggleTag, onCookNow,
           {inWeek ? <><Check size={15} strokeWidth={3} /> In this week</>
                   : <><Plus size={15} strokeWidth={2.6} /> {dinner ? "Add to a day" : "Add to this week"}</>}
         </button>
-        <button onClick={onToggleTag} aria-pressed={dinner}
-                className={`min-h-[44px] px-3 rounded-2xl border-2 text-[13px] font-extrabold ${
-                  dinner ? "bg-mint text-mintink border-ink" : "bg-transparent text-muted border-dim"
-                }`}>
-          {TAG_LABEL[DINNER_TAG]}
-        </button>
+        {open && (
+          <button onClick={onToggleTag} aria-pressed={dinner}
+                  className={`min-h-[44px] px-3 rounded-2xl border-2 text-[13px] font-extrabold ${
+                    dinner ? "bg-mint text-mintink border-ink" : "bg-transparent text-muted border-dim"
+                  }`}>
+            {TAG_LABEL[DINNER_TAG]}
+          </button>
+        )}
         <button onClick={onCookNow} className="btn text-sm bg-white text-ink">
           <ChefHat size={15} strokeWidth={2.4} /> Cook Now
         </button>

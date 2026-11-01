@@ -2,6 +2,9 @@
 
 Newest first. Add an entry for every user-visible or infrastructure change.
 
+## 2026-11-01
+- The "Weekday dinner" toggle on Library cards now shows only when a card is expanded.
+
 ## 2026-10-31
 - Library cards have a "Cook Now" button that opens the cooking screen for any recipe, planned or not. Finishing an off-plan cook records the time and marks it cooked for the week; the Log now also lists recipes cooked this way so they can be rated.
 
