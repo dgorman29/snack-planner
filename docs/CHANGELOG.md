@@ -3,6 +3,7 @@
 Newest first. Add an entry for every user-visible or infrastructure change.
 
 ## 2026-11-11
+- Fixed the "Deploy Supabase functions" workflow failing without deploying: the latest Supabase CLI needs `--yes` to deploy from CI.
 - Renamed the app from Snack Planner to Morsel (manifest name, page title, sign-in screen) and replaced the placeholder cookie icons with a new plate-and-sprig icon (`public/icon.svg` plus re-rendered PNGs). The repo name and `/snack-planner/` URL path are unchanged, so installed copies keep working.
 - Sign-up with approval: the sign-in card can create an account (email confirmation). New accounts can join a household with an invite code, but need `profiles.approved` ticked in Supabase to start one. Migration `0004_approval_limits_removal.sql` approves every existing account.
 - AI features now require being in a household, and recipe imports (link, photo, "Load the full recipe") are capped at 10 per person per 24 hours, enforced in the `snack-ai` function.

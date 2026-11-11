@@ -39,4 +39,5 @@ jobs:
             echo "::error::Couldn't read the project ref from the VITE_SUPABASE_URL secret."
             exit 1
           fi
-          supabase functions deploy snack-ai --no-verify-jwt --use-api --project-ref "$REF"
+          # --yes: newer CLIs ask for confirmation before deploying, which a CI run can't answer.
+          supabase functions deploy snack-ai --no-verify-jwt --use-api --project-ref "$REF" --yes

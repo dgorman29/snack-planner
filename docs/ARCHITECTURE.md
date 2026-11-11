@@ -82,6 +82,7 @@ Function secrets (Supabase, not in the repo): `ANTHROPIC_API_KEY`, optional `ALL
 - **Schema:** add a new file under `supabase/migrations/` and run `supabase db push` from the repo root. Apply a migration before pushing the frontend that needs it: the households frontend can't load anything until 0003 is applied.
 
 ## Gotchas
+- The functions workflow passes `--yes`: Supabase CLI releases from November 2026 refuse to deploy without confirmation when not run in a terminal ("Re-run with --yes to confirm"), and nothing is deployed.
 - `supabase db push` needs a direct Postgres connection (ports 5432/6543). Some networks block this; the Supabase SQL Editor works over HTTPS as a fallback. Migration `0001` was applied that way, so it may need `supabase migration repair --status applied 0001` before a future `db push`.
 - Supabase CLI commands run from the repo root; npm commands run from `snack-planner/`.
 - The anon key is public by design (it ships in the built JS). Never put the service_role key or the Anthropic key in the frontend.
