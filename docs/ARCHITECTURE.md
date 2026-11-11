@@ -12,24 +12,25 @@ Browser (GitHub Pages)
 |---|---|---|
 | Frontend | `snack-planner/` (Vite + React + Tailwind) | The whole app is `src/SnackPlanner.jsx` |
 | Database | Supabase project `oobnfidfqihesilvhoxv` | Households (migration `0003_households.sql`); app data in `household_data(household_id, key, value jsonb, updated_at)` |
-| AI proxy | `supabase/functions/snack-ai/index.ts` | Checks the caller is a signed-in user (`/auth/v1/user`), then calls `claim_ai_call` with the caller's own token, which refuses anyone without a household (403) and caps imports at 10 per person per rolling 24 hours (429); both return `{ error }` with a sentence the frontend shows as is. A call counts as an import when it sends `images` or `search: true`, which is decided by the function, not the caller. Holds `ANTHROPIC_API_KEY`, forwards prompts plus optional `images` (up to 4 base64 JPEG/PNG/WebP/GIF, sent before the prompt text) |
+| AI proxy | `supabase/functions/snack-ai/index.ts` | Checks the caller is a signed-in user (`/auth/v1/user`), then calls `claim_ai_call` with the caller's own token, which refuses anyone without a household (403) and caps calls per person per rolling 24 hours at 10 imports and 5 idea requests (429); both return `{ error }` with a sentence the frontend shows as is. The function picks the kind: `import` when the call sends `images` or `search: true`, `sort` when the app sends `kind: "sort"` (ingredient sorting, uncapped, and limited to 1000 output tokens so it can't stand in for an idea request), otherwise `ideas`. Holds `ANTHROPIC_API_KEY`, forwards prompts plus optional `images` (up to 4 base64 JPEG/PNG/WebP/GIF, sent before the prompt text) |
 | Hosting | GitHub Pages | Built and deployed by `.github/workflows/deploy.yml` on push to `main` |
 
 ## Households
 | Table | Holds |
 |---|---|
-| `households` | `id`, `name`, `share_library` (off by default), `created_by` |
+| `households` | `id`, `name`, `share_library` (off by default), `created_by` (the only member who can remove others; passes to the longest-standing member if they leave) |
 | `household_members` | One row per login (`user_id` is the primary key, so one household each): `household_id`, `email` (copied at join time for the member list), `show_shared` (this person's "Show other households' libraries" switch) |
 | `household_invites` | `code` (8 uppercase hex characters), `household_id`, `expires_at` (7 days). Reusable until it expires |
 | `household_data` | The app's JSON blobs, primary key `(household_id, key)` |
 | `profiles` | One row per account, made by the `on_auth_user_created` trigger on `auth.users`: `email`, `approved` (default false; migration 0004 approved every account that existed then). Members can read only their own row; approve by editing the row in the Table Editor |
-| `ai_calls` | One row per AI call: `user_id`, `is_import`, `created_at`. Rows older than 2 days are pruned on each call. No policies |
+| `ai_calls` | One row per AI call: `user_id`, `kind` (`import`, `ideas`, `sort`; `other` for rows from before 0005), `created_at`. Rows older than 2 days are pruned on each call. No policies |
 
-Row-level security: members can read their household and its member list, rename it and flip `share_library` (plain `update` on `households`), and read, insert and update its `household_data`. `household_invites` has no policies. Everything else goes through `security definer` functions, callable only by the `authenticated` role:
+Row-level security: members can read their household and its member list, and read, insert and update its `household_data`. They can't update `households` directly (that would let anyone set `created_by`); renaming and the sharing switch go through `update_household`. `household_invites` has no policies. Everything else goes through `security definer` functions, callable only by the `authenticated` role:
 - `my_household_id()`: the caller's household; the policies use it (it avoids policies on `household_members` querying themselves).
 - `create_household(household_name)`, `join_household(invite_code)`: fail with a readable message if the caller already has a household or the code is wrong/expired, and `create_household` also if the caller's profile isn't approved. The frontend shows these messages as they are.
-- `remove_household_member(member_id)`: removes another member of the caller's household (not the caller).
-- `claim_ai_call(is_import)`: see AI proxy below.
+- `update_household(new_name, share)`: either argument may be null to leave it unchanged.
+- `remove_household_member(member_id)`: creator only; removes another member of the caller's household.
+- `claim_ai_call(call_kind)`: see AI proxy below.
 - `create_household_invite()`: new code for the caller's household; also clears expired codes.
 - `leave_household()`: removes the caller; the last member out deletes the household (its data cascades).
 - `set_show_shared(show)`.
@@ -76,7 +77,7 @@ Function secrets (Supabase, not in the repo): `ANTHROPIC_API_KEY`, optional `ALL
 ## Deploying
 - **Frontend:** push to `main`. The workflow builds `snack-planner/` and publishes `dist`. Vite `base` is `/snack-planner/`.
 - **Function:** push a change under `supabase/functions/` to `main` and `.github/workflows/deploy-functions.yml` deploys `snack-ai` (also runnable by hand from the Actions tab). It needs a `SUPABASE_ACCESS_TOKEN` repository secret (Supabase dashboard > Account > Access Tokens) and reads the project ref from the `VITE_SUPABASE_URL` secret. By hand: `supabase functions deploy snack-ai --no-verify-jwt` from the repo root.
-- **Migration before function:** `snack-ai` needs `claim_ai_call` (migration 0004). Deploying the function before the migration makes every AI call fail with "Couldn't check your AI allowance".
+- **Migration before function:** `snack-ai` needs `claim_ai_call(call_kind)` (migrations 0004 and 0005). Deploying the function before the migration makes every AI call fail with "Couldn't check your AI allowance".
 - **Schema:** add a new file under `supabase/migrations/` and run `supabase db push` from the repo root. Apply a migration before pushing the frontend that needs it: the households frontend can't load anything until 0003 is applied.
 
 ## Gotchas

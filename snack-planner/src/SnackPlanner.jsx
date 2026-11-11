@@ -343,7 +343,9 @@ function pickFromLibrary(library, currentWeekId, count, exclude = new Set()) {
    sandbox, which injects auth for you. Here we call a Supabase Edge
    Function instead, which holds the real Anthropic API key server-side. */
 
-async function callClaude(prompt, { search = false, images } = {}) {
+// `kind: "sort"` marks ingredient sorting, which isn't capped; any other call
+// without a link or photos counts as a snack idea request (5 per 24 hours).
+async function callClaude(prompt, { search = false, images, kind } = {}) {
   const url = import.meta.env.VITE_SNACK_AI_URL;
   if (!url) throw new Error("AI features aren't configured (missing VITE_SNACK_AI_URL)");
 
@@ -356,7 +358,7 @@ async function callClaude(prompt, { search = false, images } = {}) {
       "Content-Type": "application/json",
       Authorization: `Bearer ${session.access_token}`,
     },
-    body: JSON.stringify({ prompt, search, images }),
+    body: JSON.stringify({ prompt, search, images, kind }),
   });
   if (!res.ok) {
     // The function's own refusals (daily import limit, no household) carry a
@@ -568,7 +570,7 @@ ${names.map((n) => `- ${n}`).join("\n")}
 Return ONLY raw JSON, no commentary: an object mapping each ingredient exactly as written above to one of: produce, dairy, pantry, frozen, other.
 Fresh fruit, vegetables and herbs are produce; eggs are dairy; canned, dried and shelf-stable goods are pantry; meat and fish are other unless frozen.`;
 
-  const parsed = extractJson(await callClaude(prompt));
+  const parsed = extractJson(await callClaude(prompt, { kind: "sort" }));
   const out = {};
   for (const [name, sec] of Object.entries(parsed || {})) {
     const section = String(sec || "").toLowerCase();
@@ -992,7 +994,9 @@ function SnackPlannerApp({ household, userId, onHouseholdChange, onSignOut }) {
       setWeek((w) => ({ ...w, suggestions: [...existing, ...picks, ...ideas] }));
     } catch (e) {
       console.error("generateIdeas failed", e);
-      setError(`Couldn't get new ideas (${e.message}). The library picks are below — try again, or add a recipe by URL.`);
+      setError(e.shown
+        ? `${e.message} The library picks are below, and "Library only" still works.`
+        : `Couldn't get new ideas (${e.message}). The library picks are below — try again, or add a recipe by URL.`);
     } finally {
       setBusy(null);
     }
@@ -3035,7 +3039,7 @@ async function loadHousehold(userId) {
   if (error) throw error;
   if (!me) return null;
   const [{ data: h, error: hErr }, { data: members, error: mErr }] = await Promise.all([
-    supabase.from("households").select("id, name, share_library").eq("id", me.household_id).single(),
+    supabase.from("households").select("id, name, share_library, created_by").eq("id", me.household_id).single(),
     supabase.from("household_members").select("user_id, email").eq("household_id", me.household_id).order("joined_at"),
   ]);
   if (hErr || mErr) throw hErr || mErr;
@@ -3146,6 +3150,7 @@ function HouseholdPanel({ household, userId, onChange, onSignOut, flash }) {
   const [confirmLeave, setConfirmLeave] = useState(false);
   const [removing, setRemoving] = useState(null); // member waiting for "Yes, remove"
   const lastOne = household.members.length <= 1;
+  const isCreator = household.created_by === userId; // only the creator can remove members
 
   async function act(kind, fn) {
     setBusy(kind);
@@ -3159,7 +3164,7 @@ function HouseholdPanel({ household, userId, onChange, onSignOut, flash }) {
   async function saveName() {
     const n = name.trim();
     if (!n || n === household.name) return;
-    if (await act("name", () => supabase.from("households").update({ name: n }).eq("id", household.id))) {
+    if (await act("name", () => supabase.rpc("update_household", { new_name: n }))) {
       onChange();
       flash("Renamed");
     }
@@ -3167,7 +3172,7 @@ function HouseholdPanel({ household, userId, onChange, onSignOut, flash }) {
 
   async function toggleShare() {
     const on = !household.share_library;
-    if (await act("share", () => supabase.from("households").update({ share_library: on }).eq("id", household.id))) onChange();
+    if (await act("share", () => supabase.rpc("update_household", { share: on }))) onChange();
   }
 
   async function toggleShowShared() {
@@ -3208,8 +3213,9 @@ function HouseholdPanel({ household, userId, onChange, onSignOut, flash }) {
           <li key={m.user_id} className="flex items-center gap-2 min-h-[40px]">
             <span className="flex-1 min-w-0 text-sm font-bold truncate">
               {m.email || "Member"}{m.user_id === userId && <span className="text-muted"> (you)</span>}
+              {m.user_id === household.created_by && <span className="text-muted"> · created it</span>}
             </span>
-            {m.user_id !== userId && (removing === m.user_id ? (
+            {isCreator && m.user_id !== userId && (removing === m.user_id ? (
               <>
                 <button onClick={() => setRemoving(null)} className="text-xs font-bold underline shrink-0">Cancel</button>
                 <button onClick={() => removeMember(m)} disabled={!!busy}
@@ -3272,7 +3278,8 @@ function HouseholdPanel({ household, userId, onChange, onSignOut, flash }) {
         <p className="text-xs font-bold text-muted mt-2">
           {lastOne
             ? "You're the only member, so leaving deletes this household's library, plans and history for good."
-            : "You'll lose access to this household's plans and library. The others keep them."}
+            : `You'll lose access to this household's plans and library. The others keep them.${
+                isCreator ? " The longest-standing member takes over removing members." : ""}`}
         </p>
       )}
     </div>

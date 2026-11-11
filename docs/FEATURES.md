@@ -16,11 +16,11 @@ Current behavior of the app. Update this file whenever a feature is added, chang
 
 ## Households
 - Each login belongs to exactly one household. Everyone in a household shares its library, weekly plans, shopping list, pantry and history; other households can't see any of it.
-- The household name sits next to the week label. Tapping it opens the Household panel: rename, see members (by email, yours marked "(you)"), "Remove" another member, "Invite someone", the two sharing switches, "Sign out" and "Leave household".
-- "Remove" asks "Yes, remove" first. The removed person loses access straight away and lands on "Set up your household" next time they open the app; everything they added stays with the household. To remove yourself, use "Leave household".
+- The household name sits next to the week label. Tapping it opens the Household panel: rename, see members (by email, yours marked "(you)", the creator marked "created it"), "Remove" another member (creator only), "Invite someone", the two sharing switches, "Sign out" and "Leave household".
+- Only the household's creator sees "Remove". It asks "Yes, remove" first. The removed person loses access straight away and lands on "Set up your household" next time they open the app; everything they added stays with the household. To remove yourself, use "Leave household".
 - "Invite someone" makes an 8-character code that works for 7 days and can be used by more than one person. They sign in, choose "Join household" and type it in (any case).
 - "Leave household" asks to confirm. The last member to leave deletes the household and all its data; the panel says so first. After leaving, the account is back at "Set up your household".
-- All members are equal: any member can rename, invite, remove another member, change sharing or leave.
+- Any member can rename, invite, change sharing or leave. Only the creator can remove members. If the creator leaves, the longest-standing remaining member becomes the creator. "Our household" (made by the households migration) has its earliest account as creator.
 - **Share our library** (per household, off by default): lets other households see our recipes, including cook times and the full recipe, and copy them. Ratings, when we last made a recipe, plans, lists and history stay private.
 - **Show other households' libraries** (per person, off by default): adds Ours / Other households pills to the Library tab (see Library tab).
 
@@ -105,7 +105,8 @@ Current behavior of the app. Update this file whenever a feature is added, chang
 ## AI limits
 - AI features only work for accounts in a household.
 - Recipe imports are capped at 10 per person in any 24 hours (not per calendar day). Imports are anything that has Claude read a web page or photos: "Pull it in" from a link, "From a photo", and "Load the full recipe" in the cooking view. Each attempt counts, even one that fails to find a recipe. Over the cap, the Add sheet or cooking view says so and suggests adding by hand.
-- Snack ideas and sorting typed ingredients into shopping-list sections are not capped.
+- Snack ideas from Claude ("Suggest snacks", "More ideas", "New set" with Library only off) are capped at 5 requests per person in any 24 hours. Over the cap, the error says so; the library picks still appear and "Library only" keeps working.
+- Sorting typed ingredients into shopping-list sections is not capped.
 
 ## Known limits
 - One household per login; a login can't belong to two.

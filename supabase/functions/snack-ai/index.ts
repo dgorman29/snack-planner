@@ -56,7 +56,7 @@ Deno.serve(async (req) => {
     });
   }
 
-  const { prompt, search, images } = payload || {};
+  const { prompt, search, images, kind } = payload || {};
   if (typeof prompt !== "string" || !prompt.trim()) {
     return new Response(JSON.stringify({ error: "Missing prompt" }), {
       status: 400,
@@ -75,9 +75,12 @@ Deno.serve(async (req) => {
   }
 
   // Imports are the calls that read a web page or photos (link and photo import,
-  // "Load the full recipe"). claim_ai_call runs as the caller: it refuses anyone
-  // not in a household, caps imports at 10 per person per 24 hours, and records
-  // the call. See migration 0004.
+  // "Load the full recipe"), decided here rather than by the caller. Other calls
+  // are ingredient sorting when the app says so, and snack ideas otherwise.
+  // claim_ai_call runs as the caller: it refuses anyone not in a household, caps
+  // imports (10) and ideas (5) per person per 24 hours, and records the call.
+  // See migrations 0004 and 0005.
+  const callKind = imageList.length > 0 || search ? "import" : kind === "sort" ? "sort" : "ideas";
   const claimRes = await fetch(`${Deno.env.get("SUPABASE_URL")}/rest/v1/rpc/claim_ai_call`, {
     method: "POST",
     headers: {
@@ -85,7 +88,7 @@ Deno.serve(async (req) => {
       apikey: Deno.env.get("SUPABASE_ANON_KEY") ?? "",
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ is_import: imageList.length > 0 || !!search }),
+    body: JSON.stringify({ call_kind: callKind }),
   });
   const claim = claimRes.ok ? await claimRes.json() : null;
   if (!claim?.ok) {
@@ -105,7 +108,8 @@ Deno.serve(async (req) => {
 
   const body = {
     model: "claude-sonnet-4-6",
-    max_tokens: 2500,
+    // Sorting only returns a short JSON map, so a "sort" call can't be used for long answers.
+    max_tokens: callKind === "sort" ? 1000 : 2500,
     messages: [{ role: "user", content }],
   };
   if (search) body.tools = [{ type: "web_search_20250305", name: "web_search" }];
