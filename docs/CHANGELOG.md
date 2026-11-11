@@ -3,6 +3,9 @@
 Newest first. Add an entry for every user-visible or infrastructure change.
 
 ## 2026-11-11
+- Sign-up with approval: the sign-in card can create an account (email confirmation). New accounts can join a household with an invite code, but need `profiles.approved` ticked in Supabase to start one. Migration `0004_approval_limits_removal.sql` approves every existing account.
+- AI features now require being in a household, and recipe imports (link, photo, "Load the full recipe") are capped at 10 per person per 24 hours, enforced in the `snack-ai` function.
+- Household members can remove another member from the Household panel.
 - Households: each login now belongs to one household with its own library, plans, shopping list and history. New accounts create a household or join one with a 7-day invite code; the Household panel (tap the household name by the week label) renames, invites, leaves and signs out. Migration `0003_households.sql` moves the existing shared data into one household holding every current account, and moves the library out of the core blob into `snackplan:library:v1`.
 - Library sharing: a household can share its library ("Share our library"), and each person can turn on "Show other households' libraries" to browse them live (cook times and full recipes included, ratings hidden) and copy recipes into their own library.
 

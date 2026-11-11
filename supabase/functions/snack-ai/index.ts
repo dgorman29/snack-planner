@@ -74,6 +74,27 @@ Deno.serve(async (req) => {
     });
   }
 
+  // Imports are the calls that read a web page or photos (link and photo import,
+  // "Load the full recipe"). claim_ai_call runs as the caller: it refuses anyone
+  // not in a household, caps imports at 10 per person per 24 hours, and records
+  // the call. See migration 0004.
+  const claimRes = await fetch(`${Deno.env.get("SUPABASE_URL")}/rest/v1/rpc/claim_ai_call`, {
+    method: "POST",
+    headers: {
+      Authorization: req.headers.get("Authorization") ?? "",
+      apikey: Deno.env.get("SUPABASE_ANON_KEY") ?? "",
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ is_import: imageList.length > 0 || !!search }),
+  });
+  const claim = claimRes.ok ? await claimRes.json() : null;
+  if (!claim?.ok) {
+    return new Response(JSON.stringify({ error: claim?.error || "Couldn't check your AI allowance" }), {
+      status: claim?.limit ? 429 : claim ? 403 : 500,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+
   // With photos, the message is the images followed by the prompt text.
   const content = imageList.length
     ? [

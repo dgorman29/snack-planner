@@ -114,9 +114,12 @@ supabase secrets set ALLOWED_ORIGIN=https://your-app.vercel.app
 
 ## Notes
 
-- **Login required.** Sign-up is disabled; create accounts in the Supabase
-  dashboard under Authentication -> Users. On first sign-in each account
-  creates a household or joins one with an invite code.
+- **Login required.** People can create accounts from the sign-in screen once
+  "Allow new users to sign up" is on in Supabase (Authentication -> Sign In /
+  Providers), or you can create them under Authentication -> Users. A new
+  account can join a household with an invite code straight away, but can
+  only start a household once you tick `approved` for it in the Table Editor
+  (`profiles`).
 - **Anthropic cost.** Each "Suggest snacks" / "More ideas" click and each
   recipe-URL import is one Claude API call, billed on your Anthropic
   console account, separate from any claude.ai subscription.

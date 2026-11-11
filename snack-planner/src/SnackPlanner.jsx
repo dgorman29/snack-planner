@@ -358,7 +358,15 @@ async function callClaude(prompt, { search = false, images } = {}) {
     },
     body: JSON.stringify({ prompt, search, images }),
   });
-  if (!res.ok) throw new Error(`Request failed (${res.status})`);
+  if (!res.ok) {
+    // The function's own refusals (daily import limit, no household) carry a
+    // sentence meant for people; `shown` marks it safe to display as is.
+    const body = await res.json().catch(() => null);
+    if ((res.status === 429 || res.status === 403) && body?.error) {
+      throw Object.assign(new Error(body.error), { shown: true });
+    }
+    throw new Error(`Request failed (${res.status})`);
+  }
   const data = await res.json();
   const text = (data.content || [])
     .filter((b) => b && b.type === "text")
@@ -821,7 +829,7 @@ function chosenOf(w, library, pool) {
   return (w.selected || []).map((id) => byId.get(id)).filter(Boolean);
 }
 
-function SnackPlannerApp({ household, onHouseholdChange, onSignOut }) {
+function SnackPlannerApp({ household, userId, onHouseholdChange, onSignOut }) {
   const [tab, setTab] = useState("week");
   const [weekMode, setWeekMode] = useState("dinners"); // "dinners" | "snacks"
   const [ready, setReady] = useState(false);
@@ -1341,7 +1349,7 @@ function SnackPlannerApp({ household, onHouseholdChange, onSignOut }) {
       )}
 
       <Sheet open={householdOpen} onClose={() => setHouseholdOpen(false)} title="Household">
-        <HouseholdPanel household={household} onChange={onHouseholdChange} onSignOut={onSignOut} flash={flash} />
+        <HouseholdPanel household={household} userId={userId} onChange={onHouseholdChange} onSignOut={onSignOut} flash={flash} />
       </Sheet>
 
       {toast && (
@@ -1870,7 +1878,7 @@ function CookingScreen({ snack, startedAt, onFinish, onLater, onSaveMethod }) {
     try {
       onSaveMethod(snack.id, { method: await fetchMethod(snack.url) });
     } catch (e) {
-      setErr(`Couldn't load the full recipe (${e.message}).`);
+      setErr(e.shown ? e.message : `Couldn't load the full recipe (${e.message}).`);
     } finally {
       setLoading(false);
     }
@@ -2289,7 +2297,7 @@ function LibraryView({ library, onAdd, onRemove, onUpdate, week, isNext, selecte
       setImportDinner(false);
       setSheet(null);
     } catch (e) {
-      setImportError("Couldn't read that page. Keep the link and fill in the details yourself.");
+      setImportError(e.shown ? e.message : "Couldn't read that page. Keep the link and fill in the details yourself.");
     } finally {
       setBusy(null);
     }
@@ -2309,7 +2317,7 @@ function LibraryView({ library, onAdd, onRemove, onUpdate, week, isNext, selecte
       setSheet(null);
     } catch (err) {
       console.error("photo import failed", err);
-      setImportError("Couldn't read a recipe from that photo. Try a closer, well-lit shot of the whole recipe, or enter it by hand.");
+      setImportError(err.shown ? err.message : "Couldn't read a recipe from that photo. Try a closer, well-lit shot of the whole recipe, or enter it by hand.");
     } finally {
       setBusy(null);
     }
@@ -2921,19 +2929,54 @@ function HistoryView({ weeks, exposures, library }) {
 /* ------------------------------------------------------------------- auth */
 
 function LoginForm() {
+  const [mode, setMode] = useState("signin"); // "signin" | "signup"
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
+  const [sentTo, setSentTo] = useState(null); // email a confirmation link went to
+  const signup = mode === "signup";
 
   async function submit(e) {
     e.preventDefault();
     if (!supabase) return;
     setBusy(true);
     setError(null);
-    const { error } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
-    if (error) setError("That email and password didn't work.");
+    if (!signup) {
+      const { error } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
+      if (error) setError("That email and password didn't work.");
+    } else {
+      // The confirmation link brings them back here, already signed in.
+      const { data, error } = await supabase.auth.signUp({
+        email: email.trim(), password,
+        options: { emailRedirectTo: window.location.origin + import.meta.env.BASE_URL },
+      });
+      if (error) {
+        setError(/not allowed|disabled/i.test(error.message) ? "New accounts aren't open yet. Ask whoever runs this app to make you one." : error.message);
+      } else if (!data.session) {
+        setSentTo(email.trim());
+      }
+    }
     setBusy(false);
+  }
+
+  function switchMode() {
+    setMode(signup ? "signin" : "signup");
+    setError(null);
+  }
+
+  if (sentTo) {
+    return (
+      <div className="min-h-screen flex items-center justify-center px-5 bg-blush text-ink">
+        <div className="sticker w-full p-6" style={{ maxWidth: 360 }}>
+          <h1 className="font-display text-2xl font-semibold mb-2">Check your email</h1>
+          <p className="text-sm font-semibold text-muted leading-relaxed">
+            We sent a link to <b className="text-ink">{sentTo}</b>. Open it on this device to finish making your account.
+          </p>
+          <button onClick={() => { setSentTo(null); setMode("signin"); }} className="btn-plain w-full mt-4">Back to sign in</button>
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -2956,7 +2999,8 @@ function LoginForm() {
           className="field mb-3"
         />
         <input
-          type="password" autoComplete="current-password" required value={password}
+          type="password" autoComplete={signup ? "new-password" : "current-password"} required
+          minLength={signup ? 8 : undefined} value={password}
           onChange={(e) => setPassword(e.target.value)} placeholder="Password" aria-label="Password"
           className="field"
         />
@@ -2970,7 +3014,10 @@ function LoginForm() {
           className="btn-primary w-full mt-4"
           style={{ opacity: busy || !supabaseConfigured ? 0.6 : 1 }}
         >
-          {busy ? <Loader2 size={16} className="animate-spin" /> : "Sign in"}
+          {busy ? <Loader2 size={16} className="animate-spin" /> : signup ? "Create account" : "Sign in"}
+        </button>
+        <button type="button" onClick={switchMode} className="mt-4 w-full text-center text-xs font-bold underline">
+          {signup ? "I already have an account" : "New here? Create an account"}
         </button>
       </form>
     </div>
@@ -2998,11 +3045,20 @@ async function loadHousehold(userId) {
 // Database errors raised by the household functions are written for people.
 const householdError = (e) => e?.message || "Something went wrong. Try again.";
 
-function HouseholdSetup({ onDone, onSignOut }) {
+function HouseholdSetup({ userId, onDone, onSignOut }) {
+  const [approved, setApproved] = useState(null); // null while checking
   const [name, setName] = useState("");
   const [code, setCode] = useState("");
   const [busy, setBusy] = useState(null); // "create" | "join"
   const [error, setError] = useState(null);
+
+  // Only approved accounts can start a household (approval is ticked by hand in
+  // Supabase); anyone can join one with a member's invite code.
+  const checkApproval = useCallback(async () => {
+    const { data } = await supabase.from("profiles").select("approved").eq("user_id", userId).maybeSingle();
+    setApproved(!!data?.approved);
+  }, [userId]);
+  useEffect(() => { checkApproval(); }, [checkApproval]);
 
   async function run(kind) {
     setBusy(kind);
@@ -3027,6 +3083,14 @@ function HouseholdSetup({ onDone, onSignOut }) {
           Your household shares one weekly plan, shopping list and library.
         </p>
 
+        {approved === null && <div className="flex justify-center py-3"><Loader2 className="animate-spin text-muted" size={20} /></div>}
+        {approved === false && (
+          <div className="rounded-2xl border-2 border-ink bg-butter px-4 py-3 text-[13px] font-bold leading-relaxed">
+            Starting a new household needs your account to be approved first. You can join a household with an invite code right away.
+            <button onClick={checkApproval} className="block mt-1.5 text-xs underline">Check again</button>
+          </div>
+        )}
+        {approved && <>
         <form onSubmit={(e) => { e.preventDefault(); if (name.trim()) run("create"); }}>
           <label className="block text-xs font-extrabold mb-1.5" htmlFor="hh-name">Start a new one</label>
           <input id="hh-name" value={name} onChange={(e) => setName(e.target.value)} maxLength={60}
@@ -3036,9 +3100,10 @@ function HouseholdSetup({ onDone, onSignOut }) {
             {busy === "create" ? <Loader2 size={16} className="animate-spin" /> : "Create household"}
           </button>
         </form>
+        </>}
 
         <form onSubmit={(e) => { e.preventDefault(); if (code.trim()) run("join"); }} className="mt-6">
-          <label className="block text-xs font-extrabold mb-1.5" htmlFor="hh-code">Or join one with an invite code</label>
+          <label className="block text-xs font-extrabold mb-1.5" htmlFor="hh-code">{approved ? "Or join one with an invite code" : "Join with an invite code"}</label>
           <input id="hh-code" value={code} onChange={(e) => setCode(e.target.value.toUpperCase())}
                  placeholder="8-character code" autoCapitalize="characters" className="field font-mono tracking-widest" />
           <button type="submit" disabled={!!busy || !code.trim()} className="btn-plain w-full mt-3"
@@ -3073,12 +3138,13 @@ function HouseholdToggle({ on, onClick, busy, disabled, title, children }) {
   );
 }
 
-function HouseholdPanel({ household, onChange, onSignOut, flash }) {
+function HouseholdPanel({ household, userId, onChange, onSignOut, flash }) {
   const [name, setName] = useState(household.name);
   const [invite, setInvite] = useState(null);
   const [busy, setBusy] = useState(null);
   const [error, setError] = useState(null);
   const [confirmLeave, setConfirmLeave] = useState(false);
+  const [removing, setRemoving] = useState(null); // member waiting for "Yes, remove"
   const lastOne = household.members.length <= 1;
 
   async function act(kind, fn) {
@@ -3113,6 +3179,14 @@ function HouseholdPanel({ household, onChange, onSignOut, flash }) {
     if (res) setInvite(res.data);
   }
 
+  async function removeMember(m) {
+    if (await act("remove", () => supabase.rpc("remove_household_member", { member_id: m.user_id }))) {
+      setRemoving(null);
+      onChange();
+      flash(`Removed ${m.email || "them"}`);
+    }
+  }
+
   async function leave() {
     if (await act("leave", () => supabase.rpc("leave_household"))) onChange();
   }
@@ -3131,9 +3205,29 @@ function HouseholdPanel({ household, onChange, onSignOut, flash }) {
       <h3 className="text-xs font-extrabold mt-5 mb-1.5">Members</h3>
       <ul className="space-y-1">
         {household.members.map((m) => (
-          <li key={m.user_id} className="text-sm font-bold truncate">{m.email || "Member"}</li>
+          <li key={m.user_id} className="flex items-center gap-2 min-h-[40px]">
+            <span className="flex-1 min-w-0 text-sm font-bold truncate">
+              {m.email || "Member"}{m.user_id === userId && <span className="text-muted"> (you)</span>}
+            </span>
+            {m.user_id !== userId && (removing === m.user_id ? (
+              <>
+                <button onClick={() => setRemoving(null)} className="text-xs font-bold underline shrink-0">Cancel</button>
+                <button onClick={() => removeMember(m)} disabled={!!busy}
+                        className="btn text-xs bg-berry text-white shrink-0 min-h-[36px] px-3">
+                  {busy === "remove" ? <Loader2 size={14} className="animate-spin" /> : "Yes, remove"}
+                </button>
+              </>
+            ) : (
+              <button onClick={() => setRemoving(m.user_id)} className="text-xs font-bold underline shrink-0">Remove</button>
+            ))}
+          </li>
         ))}
       </ul>
+      {removing && (
+        <p className="text-xs font-bold text-muted mt-1">
+          They lose access to this household's plans and library straight away. Everything they added stays here.
+        </p>
+      )}
 
       <div className="mt-3">
         {invite ? (
@@ -3230,9 +3324,9 @@ export default function SnackPlanner() {
       </div>
     );
   }
-  if (!household) return <HouseholdSetup onDone={refreshHousehold} onSignOut={signOut} />;
+  if (!household) return <HouseholdSetup userId={userId} onDone={refreshHousehold} onSignOut={signOut} />;
   return (
-    <SnackPlannerApp key={household.id} household={household}
+    <SnackPlannerApp key={household.id} household={household} userId={userId}
                      onHouseholdChange={refreshHousehold} onSignOut={signOut} />
   );
 }

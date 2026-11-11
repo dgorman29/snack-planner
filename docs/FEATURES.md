@@ -9,15 +9,18 @@ Current behavior of the app. Update this file whenever a feature is added, chang
 - Installable as a standalone app (Chrome on Android: menu > Install app). Opens full-screen with its own icon. Requires being online; there is no offline mode.
 
 ## Login
-- Email and password sign-in (Supabase Auth). Accounts are created by the owner in the Supabase dashboard; public sign-up is disabled.
-- After signing in, an account with no household sees "Set up your household": create one by name, or join one with an invite code.
+- Email and password sign-in (Supabase Auth).
+- "New here? Create an account" on the sign-in card switches it to sign-up (password at least 8 characters). Supabase emails a confirmation link that returns to the app signed in; the card says "Check your email" meanwhile. While sign-ups are off in Supabase, it says new accounts aren't open yet.
+- After signing in, an account with no household sees "Set up your household": join one with an invite code, or create one by name.
+- **Approval:** only approved accounts can create a household. Accounts that existed before approval was added are approved; new ones are not until the owner ticks `approved` for them in Supabase (Table Editor > `profiles`). An unapproved account sees a note saying so with "Check again", and can still join a household with a code at once: a member's invite code counts as approval.
 
 ## Households
 - Each login belongs to exactly one household. Everyone in a household shares its library, weekly plans, shopping list, pantry and history; other households can't see any of it.
-- The household name sits next to the week label. Tapping it opens the Household panel: rename, see members (by email), "Invite someone", the two sharing switches, "Sign out" and "Leave household".
+- The household name sits next to the week label. Tapping it opens the Household panel: rename, see members (by email, yours marked "(you)"), "Remove" another member, "Invite someone", the two sharing switches, "Sign out" and "Leave household".
+- "Remove" asks "Yes, remove" first. The removed person loses access straight away and lands on "Set up your household" next time they open the app; everything they added stays with the household. To remove yourself, use "Leave household".
 - "Invite someone" makes an 8-character code that works for 7 days and can be used by more than one person. They sign in, choose "Join household" and type it in (any case).
 - "Leave household" asks to confirm. The last member to leave deletes the household and all its data; the panel says so first. After leaving, the account is back at "Set up your household".
-- All members are equal: any member can rename, invite, change sharing or leave.
+- All members are equal: any member can rename, invite, remove another member, change sharing or leave.
 - **Share our library** (per household, off by default): lets other households see our recipes, including cook times and the full recipe, and copy them. Ratings, when we last made a recipe, plans, lists and history stay private.
 - **Show other households' libraries** (per person, off by default): adds Ours / Other households pills to the Library tab (see Library tab).
 
@@ -99,9 +102,14 @@ Current behavior of the app. Update this file whenever a feature is added, chang
 - Exposure meter per vegetable, out to 10 tries, with a "warming up" flag when recent ratings improve.
 - Past weeks with each verdict. Weeks roll over automatically on Monday: next week's plan (if any) becomes the current week, otherwise it starts empty.
 
+## AI limits
+- AI features only work for accounts in a household.
+- Recipe imports are capped at 10 per person in any 24 hours (not per calendar day). Imports are anything that has Claude read a web page or photos: "Pull it in" from a link, "From a photo", and "Load the full recipe" in the cooking view. Each attempt counts, even one that fails to find a recipe. Over the cap, the Add sheet or cooking view says so and suggests adding by hand.
+- Snack ideas and sorting typed ingredients into shopping-list sections are not capped.
+
 ## Known limits
 - One household per login; a login can't belong to two.
 - Each household's data is a few shared rows, so simultaneous edits from two members' devices are last-write-wins.
-- Accounts are still created by hand (sign-up is off), so new friends need an account before they can use an invite code.
+- No approval queue in the app: approving an account is done by hand in the Supabase Table Editor.
 - Dinners are one per day, Monday to Sunday. The "Weekday dinner" tag keeps its name even though dinners can now be planned for the weekend.
 - No automated tests.
