@@ -13,7 +13,7 @@ snack-planner-repo/              Repo root — Supabase CLI commands run from he
     src/lib/supabaseClient.js      Supabase client, reads VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY
   supabase/                      Linked Supabase project
     config.toml
-    migrations/0001_init.sql       The one table the app needs (kv_store)
+    migrations/                    Schema: 0003_households.sql holds the current tables
     functions/snack-ai/index.ts    Edge Function that proxies AI calls, holding the Anthropic key
 ```
 
@@ -21,12 +21,10 @@ The `supabase/` folder and the frontend are siblings under this repo root —
 the Supabase CLI expects to run at the repo root (where `supabase/` lives),
 while `npm`/Vite commands run one level down, inside `snack-planner/`.
 
-Storage model: the app keeps three JSON blobs (recipe library + history,
-this week's plan, pantry list) — same shape as the original `window.storage`
-version. Those now live as three rows in one `kv_store(key, value jsonb)`
-table instead of three separate normalized tables, to keep the port
-mechanical. If this grows into a multi-user app, that's the first thing
-to properly normalize.
+Storage model: each household keeps a few JSON blobs (recipe library,
+history, this and next week's plans, pantry list) — same shape as the
+original `window.storage` version — as rows in
+`household_data(household_id, key, value jsonb)`. See `docs/ARCHITECTURE.md`.
 
 ## One-time setup
 
@@ -117,7 +115,8 @@ supabase secrets set ALLOWED_ORIGIN=https://your-app.vercel.app
 ## Notes
 
 - **Login required.** Sign-up is disabled; create accounts in the Supabase
-  dashboard under Authentication -> Users. All accounts share one set of data.
+  dashboard under Authentication -> Users. On first sign-in each account
+  creates a household or joins one with an invite code.
 - **Anthropic cost.** Each "Suggest snacks" / "More ideas" click and each
   recipe-URL import is one Claude API call, billed on your Anthropic
   console account, separate from any claude.ai subscription.

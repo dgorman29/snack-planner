@@ -10,7 +10,16 @@ Current behavior of the app. Update this file whenever a feature is added, chang
 
 ## Login
 - Email and password sign-in (Supabase Auth). Accounts are created by the owner in the Supabase dashboard; public sign-up is disabled.
-- All signed-in users share the same data. "Sign out" is next to the week label.
+- After signing in, an account with no household sees "Set up your household": create one by name, or join one with an invite code.
+
+## Households
+- Each login belongs to exactly one household. Everyone in a household shares its library, weekly plans, shopping list, pantry and history; other households can't see any of it.
+- The household name sits next to the week label. Tapping it opens the Household panel: rename, see members (by email), "Invite someone", the two sharing switches, "Sign out" and "Leave household".
+- "Invite someone" makes an 8-character code that works for 7 days and can be used by more than one person. They sign in, choose "Join household" and type it in (any case).
+- "Leave household" asks to confirm. The last member to leave deletes the household and all its data; the panel says so first. After leaving, the account is back at "Set up your household".
+- All members are equal: any member can rename, invite, change sharing or leave.
+- **Share our library** (per household, off by default): lets other households see our recipes, including cook times and the full recipe, and copy them. Ratings, when we last made a recipe, plans, lists and history stay private.
+- **Show other households' libraries** (per person, off by default): adds Ours / Other households pills to the Library tab (see Library tab).
 
 ## Recipes: dinners and snacks
 - Every recipe lives in the Library. A recipe tagged **Weekday dinner** is a dinner; every other recipe is a snack.
@@ -81,12 +90,18 @@ Current behavior of the app. Update this file whenever a feature is added, chang
 - The add buttons target the week chosen on the Week tab. With "Next week" chosen, the Library says so at the top, buttons read "Add to next week" / "In next week", and the day picker asks "Which day next week?". "Cook Now" always cooks today, whichever week is chosen.
 - "Add to this week" on a snack selects it for the current week (it appears on the Snacks view and feeds the shopping list). On a dinner the button reads "Add to a day" and asks which day. Tap "In this week" to take either back out (a dinner also leaves its day). A new set of snack suggestions replaces the Snacks cards but a pinned snack stays selected and on the list and log.
 
+### Other households
+- Shown when "Show other households' libraries" is on. "Other households" lists the libraries of every household sharing theirs, grouped by household name and read fresh each time the view opens, so edits they make show up. Search and the All / Weekday dinner / Snacks pills apply.
+- Cards show the vegetable, Weekday dinner tag, snack timing and their cook time (their average of timed sessions, or their estimate). Expanded, they show the description, ingredients, full recipe steps and link.
+- "Copy to our library" saves our own copy; the button then reads "In our library". A copy never changes when theirs does. It starts with no ratings and no timed sessions of its own; their cook time becomes its estimate until we time it ourselves.
+
 ## History tab
 - Exposure meter per vegetable, out to 10 tries, with a "warming up" flag when recent ratings improve.
 - Past weeks with each verdict. Weeks roll over automatically on Monday: next week's plan (if any) becomes the current week, otherwise it starts empty.
 
 ## Known limits
-- No per-user data: every signed-in account sees and edits the same household data.
-- All data is one shared set of rows, so simultaneous edits from two devices are last-write-wins.
+- One household per login; a login can't belong to two.
+- Each household's data is a few shared rows, so simultaneous edits from two members' devices are last-write-wins.
+- Accounts are still created by hand (sign-up is off), so new friends need an account before they can use an invite code.
 - Dinners are one per day, Monday to Sunday. The "Weekday dinner" tag keeps its name even though dinners can now be planned for the weekend.
 - No automated tests.

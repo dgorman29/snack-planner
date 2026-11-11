@@ -7,19 +7,21 @@ import {
 import { supabase, supabaseConfigured } from "./lib/supabaseClient";
 
 /* ---------------------------------------------------------------- storage */
-/* Same three keys as the original Artifact version (window.storage), now
-   backed by a single `kv_store(key text primary key, value jsonb)` table
-   in Supabase instead. */
+/* Same keys as the original Artifact version (window.storage), now rows in
+   Supabase's `household_data(household_id, key, value jsonb)`. Every row
+   belongs to one household; row-level security only lets its members in. */
 
-const KEY_CORE = "snackplan:core:v1";     // library + archived weeks + exposure counts
-const KEY_WEEK = "snackplan:week:v1";     // this week: suggestions, picks, prepped, list state
-const KEY_NEXT = "snackplan:nextweek:v1"; // next week's plan, made ahead; becomes "this week" on Monday
-const KEY_HAVE = "snackplan:pantry:v1";   // ingredients we always have at home
+const KEY_CORE = "snackplan:core:v1";       // archived weeks + exposure counts + ingredient sections
+const KEY_LIBRARY = "snackplan:library:v1"; // recipes; its own key so it can be shared with other households
+const KEY_WEEK = "snackplan:week:v1";       // this week: suggestions, picks, prepped, list state
+const KEY_NEXT = "snackplan:nextweek:v1";   // next week's plan, made ahead; becomes "this week" on Monday
+const KEY_HAVE = "snackplan:pantry:v1";     // ingredients we always have at home
 
-async function loadKey(key, fallback) {
+async function loadKey(householdId, key, fallback) {
   try {
     if (!supabase) return fallback;
-    const { data, error } = await supabase.from("kv_store").select("value").eq("key", key).maybeSingle();
+    const { data, error } = await supabase.from("household_data").select("value")
+      .eq("household_id", householdId).eq("key", key).maybeSingle();
     if (error || !data) return fallback;
     return data.value == null ? fallback : data.value;
   } catch (e) {
@@ -27,10 +29,11 @@ async function loadKey(key, fallback) {
   }
 }
 
-async function saveKey(key, value) {
+async function saveKey(householdId, key, value) {
   try {
     if (!supabase) return false;
-    const { error } = await supabase.from("kv_store").upsert({ key, value, updated_at: new Date().toISOString() });
+    const { error } = await supabase.from("household_data")
+      .upsert({ household_id: householdId, key, value, updated_at: new Date().toISOString() });
     if (error) console.error("save failed", key, error);
     return !error;
   } catch (e) {
@@ -818,7 +821,7 @@ function chosenOf(w, library, pool) {
   return (w.selected || []).map((id) => byId.get(id)).filter(Boolean);
 }
 
-function SnackPlannerApp({ onSignOut }) {
+function SnackPlannerApp({ household, onHouseholdChange, onSignOut }) {
   const [tab, setTab] = useState("week");
   const [weekMode, setWeekMode] = useState("dinners"); // "dinners" | "snacks"
   const [ready, setReady] = useState(false);
@@ -834,6 +837,7 @@ function SnackPlannerApp({ onSignOut }) {
   const [pantry, setPantry] = useState([]);
   const [sectionMemory, setSectionMemory] = useState({}); // ingredient name -> section, learned from Claude
   const [cooking, setCooking] = useState(loadCooking); // { id, startedAt } while a recipe is being cooked
+  const [householdOpen, setHouseholdOpen] = useState(false);
 
   const [busy, setBusy] = useState(null);
   const [error, setError] = useState(null);
@@ -844,13 +848,19 @@ function SnackPlannerApp({ onSignOut }) {
     let cancelled = false;
     (async () => {
       if (!supabaseConfigured) setStorageOk(false);
-      const core = await loadKey(KEY_CORE, null);
-      const storedWeek = await loadKey(KEY_WEEK, null);
-      const storedNext = await loadKey(KEY_NEXT, null);
-      const have = await loadKey(KEY_HAVE, []);
+      const hid = household.id;
+      const [core, storedLib, storedWeek, storedNext, have] = await Promise.all([
+        loadKey(hid, KEY_CORE, null),
+        loadKey(hid, KEY_LIBRARY, null),
+        loadKey(hid, KEY_WEEK, null),
+        loadKey(hid, KEY_NEXT, null),
+        loadKey(hid, KEY_HAVE, []),
+      ]);
       if (cancelled) return;
 
-      let lib = core?.library?.length ? core.library : seedLibrary();
+      // Libraries saved before households lived inside the core blob.
+      const savedLib = Array.isArray(storedLib) ? storedLib : core?.library;
+      let lib = savedLib?.length ? savedLib : seedLibrary();
       let wks = core?.weeks || [];
       const thisWeekId = weekStartOf();
       let cur = storedWeek && storedWeek.id === thisWeekId ? { ...emptyWeek(thisWeekId), ...storedWeek } : null;
@@ -894,12 +904,13 @@ function SnackPlannerApp({ onSignOut }) {
     // The first run after loading would only re-save what was just loaded, unless
     // the load archived last week (see the rollover above), which must be saved.
     if (firstRun.current) { firstRun.current = false; return; }
-    saveKey(KEY_CORE, { library, weeks, exposures, sections: sectionMemory });
-  }, [library, weeks, exposures, sectionMemory, ready]);
+    saveKey(household.id, KEY_CORE, { weeks, exposures, sections: sectionMemory });
+  }, [weeks, exposures, sectionMemory, ready]);
 
-  useEffect(() => { if (ready) saveKey(KEY_WEEK, week); }, [week, ready]);
-  useEffect(() => { if (ready) saveKey(KEY_NEXT, nextWeek); }, [nextWeek, ready]);
-  useEffect(() => { if (ready) saveKey(KEY_HAVE, pantry); }, [pantry, ready]);
+  useEffect(() => { if (ready) saveKey(household.id, KEY_LIBRARY, library); }, [library, ready]);
+  useEffect(() => { if (ready) saveKey(household.id, KEY_WEEK, week); }, [week, ready]);
+  useEffect(() => { if (ready) saveKey(household.id, KEY_NEXT, nextWeek); }, [nextWeek, ready]);
+  useEffect(() => { if (ready) saveKey(household.id, KEY_HAVE, pantry); }, [pantry, ready]);
 
   // A session whose recipe has since been deleted can't be finished; drop it.
   useEffect(() => {
@@ -1228,7 +1239,9 @@ function SnackPlannerApp({ onSignOut }) {
             <div>
               <div className="text-[13px] font-extrabold text-muted mb-1.5">
                 {prettyWeek(tab === "week" || tab === "library" ? plan.id : week.id)}
-                <button onClick={onSignOut} className="ml-3 text-xs font-bold underline">Sign out</button>
+                <button onClick={() => setHouseholdOpen(true)} className="ml-3 text-xs font-bold underline">
+                  {household.name}
+                </button>
               </div>
               <h1 className="font-display text-[34px] leading-none font-semibold tracking-tight">
                 {tab === "week" && "Our week"}
@@ -1310,6 +1323,7 @@ function SnackPlannerApp({ onSignOut }) {
             library={library} onAdd={addToLibrary} onRemove={removeFromLibrary} onUpdate={updateLibrarySnack}
             week={plan} isNext={isNext} selectedIds={plan.selected} onToggleInWeek={toggleInWeek} onToggleTag={toggleLibraryTag}
             onAssignDinner={assignDinner} onCookNow={startCooking}
+            showShared={household.show_shared}
             busy={busy} setBusy={setBusy} flash={flash}
           />
         )}
@@ -1325,6 +1339,10 @@ function SnackPlannerApp({ onSignOut }) {
           onFinish={finishCooking} onLater={cookLater} onSaveMethod={updateLibrarySnack}
         />
       )}
+
+      <Sheet open={householdOpen} onClose={() => setHouseholdOpen(false)} title="Household">
+        <HouseholdPanel household={household} onChange={onHouseholdChange} onSignOut={onSignOut} flash={flash} />
+      </Sheet>
 
       {toast && (
         <div className="fixed left-0 right-0 flex justify-center z-[70] px-5" style={{ bottom: 100 }}>
@@ -2235,9 +2253,11 @@ function LogView({ week, pool, onTogglePrepped, onLog, onGoToWeek }) {
 
 /* ----------------------------------------------------------- library view */
 
-function LibraryView({ library, onAdd, onRemove, onUpdate, week, isNext, selectedIds, onToggleInWeek, onToggleTag, onAssignDinner, onCookNow, busy, setBusy, flash }) {
+function LibraryView({ library, onAdd, onRemove, onUpdate, week, isNext, selectedIds, onToggleInWeek, onToggleTag, onAssignDinner, onCookNow, showShared, busy, setBusy, flash }) {
   const [q, setQ] = useState("");
   const [kind, setKind] = useState("all"); // "all" | "dinner" | "snack"
+  const [source, setSource] = useState("ours"); // "ours" | "others" (other households' shared libraries)
+  const viewingShared = showShared && source === "others";
   const [sheet, setSheet] = useState(null); // "url" | "manual"
   const [editing, setEditing] = useState(null); // snack being edited
   const [dayFor, setDayFor] = useState(null); // dinner waiting for a day
@@ -2247,13 +2267,14 @@ function LibraryView({ library, onAdd, onRemove, onUpdate, week, isNext, selecte
   const photoInput = useRef(null);
   const importing = busy === "import" || busy === "photo";
 
-  const filtered = library.filter((s) => {
+  const matches = (s) => {
     if (kind === "dinner" && !hasTag(s, DINNER_TAG)) return false;
     if (kind === "snack" && hasTag(s, DINNER_TAG)) return false;
     if (!q.trim()) return true;
     const t = `${s.title} ${s.vegetable} ${(s.ingredients || []).map((i) => i.name).join(" ")}`.toLowerCase();
     return t.includes(q.toLowerCase());
-  });
+  };
+  const filtered = library.filter(matches);
 
   async function doImport() {
     const link = url.trim();
@@ -2310,12 +2331,22 @@ function LibraryView({ library, onAdd, onRemove, onUpdate, week, isNext, selecte
         </button>
       </div>
 
+      {showShared && (
+        <div className="flex gap-2 mb-2">
+          <Pill active={!viewingShared} onClick={() => setSource("ours")}>Ours</Pill>
+          <Pill active={viewingShared} onClick={() => setSource("others")}>Other households</Pill>
+        </div>
+      )}
+
       <div className="flex gap-2 mb-4">
         {[["all", "All"], ["dinner", TAG_LABEL[DINNER_TAG]], ["snack", "Snacks"]].map(([id, label]) => (
           <Pill key={id} active={kind === id} onClick={() => setKind(id)}>{label}</Pill>
         ))}
       </div>
 
+      {viewingShared && <SharedLibraries library={library} matches={matches} onCopy={onAdd} />}
+
+      {!viewingShared && <>
       {isNext && (
         <p className="mb-3 text-xs font-bold text-muted">
           Adding to next week. Switch back to this week on the Week tab.
@@ -2341,6 +2372,7 @@ function LibraryView({ library, onAdd, onRemove, onUpdate, week, isNext, selecte
           />
         ))}
       </div>
+      </>}
 
       <Sheet open={!!dayFor} onClose={() => setDayFor(null)} title={isNext ? "Which day next week?" : "Which day?"}>
         {dayFor && (
@@ -2421,6 +2453,132 @@ function LibraryView({ library, onAdd, onRemove, onUpdate, week, isNext, selecte
           onSave={(snack) => { onAdd(snack); setUrl(""); setSheet(null); }}
         />
       </Sheet>
+    </div>
+  );
+}
+
+/* Other households' libraries, read live each time this view opens. Recipes can
+   only be copied: a copy is ours to edit, rate and time, and starts with no
+   ratings or cook times of its own. */
+function SharedLibraries({ library, matches, onCopy }) {
+  const [shared, setShared] = useState(null); // [{ household_id, household_name, recipes }]
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    supabase.rpc("shared_libraries").then(({ data, error }) => {
+      if (cancelled) return;
+      if (error) { console.error("shared_libraries failed", error); setFailed(true); return; }
+      setShared(data || []);
+    });
+    return () => { cancelled = true; };
+  }, []);
+
+  if (failed) return <Empty icon={BookMarked}>Couldn't load other households' libraries. Try again in a bit.</Empty>;
+  if (!shared) {
+    return <div className="flex justify-center py-8"><Loader2 className="animate-spin text-muted" size={22} /></div>;
+  }
+  if (!shared.length) {
+    return <Empty icon={BookMarked}>No other household is sharing its library yet.</Empty>;
+  }
+
+  const copied = new Set(library.map((s) => s.copiedFrom && `${s.copiedFrom.householdId}:${s.copiedFrom.id}`).filter(Boolean));
+
+  function copy(h, s) {
+    const { cookTimes, ...rest } = s;
+    onCopy({
+      ...rest,
+      id: newId(),
+      source: "shared",
+      copiedFrom: { householdId: h.household_id, householdName: h.household_name, id: s.id },
+      prepMinutes: cookMinutes(s) || s.prepMinutes || null, // their time becomes our estimate
+      ratings: [],
+      lastMadeWeek: null,
+    });
+  }
+
+  const groups = shared
+    .map((h) => ({ ...h, recipes: (h.recipes || []).filter(matches) }))
+    .filter((h) => h.recipes.length);
+
+  if (!groups.length) return <Empty icon={BookMarked}>Nothing matches that. Try a vegetable name or switch the filter.</Empty>;
+
+  return (
+    <div className="space-y-5">
+      {groups.map((h) => (
+        <section key={h.household_id}>
+          <h2 className="font-display text-lg font-semibold mb-2">{h.household_name}</h2>
+          <div className="space-y-3">
+            {h.recipes.map((s) => (
+              <SharedRecipeCard key={s.id} snack={s}
+                                copied={copied.has(`${h.household_id}:${s.id}`)}
+                                onCopy={() => copy(h, s)} />
+            ))}
+          </div>
+        </section>
+      ))}
+    </div>
+  );
+}
+
+function SharedRecipeCard({ snack: s, copied, onCopy }) {
+  const [open, setOpen] = useState(false);
+  const method = String(s.method || "").split("\n").map((l) => l.trim()).filter(Boolean);
+
+  return (
+    <div className={`sticker px-4 py-3.5 ${open ? "bg-butter" : ""}`}>
+      <button onClick={() => setOpen((o) => !o)} aria-expanded={open} className="text-left w-full">
+        <div className="flex items-start justify-between gap-2">
+          <h3 className="font-display text-base font-semibold leading-tight">{s.title}</h3>
+          {open ? <ChevronDown size={20} className="shrink-0" />
+                : <ChevronRight size={20} className="shrink-0" />}
+        </div>
+        <div className="flex items-center gap-2 flex-wrap mt-1.5 text-xs font-extrabold">
+          {s.vegetable && <span className="inline-flex items-center gap-1.5"><VegDot veg={s.vegetable} /> {s.vegetable}</span>}
+          {hasTag(s, DINNER_TAG) && <><span>·</span><span>{TAG_LABEL[DINNER_TAG]}</span></>}
+          {TIERS[s.tier] && <><span>·</span><span>{TIERS[s.tier].label}</span></>}
+          {!!cookMinutes(s) && (
+            <>
+              <span>·</span>
+              <span className="inline-flex items-center gap-1"><Clock size={12} /> {cookMinutes(s)} min</span>
+            </>
+          )}
+        </div>
+      </button>
+
+      {open && (
+        <div className="mt-3">
+          {s.steps
+            ? <p className="text-[13px] font-semibold leading-relaxed">{s.steps}</p>
+            : <p className="text-[13px] font-bold text-muted">No description yet.</p>}
+          {!!(s.ingredients || []).length && (
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              {s.ingredients.map((i, n) => (
+                <span key={n} className="chip bg-white">{ingredientLine(i)}</span>
+              ))}
+            </div>
+          )}
+          {!!method.length && (
+            <ol className="mt-3 space-y-1.5 list-decimal pl-5 text-[13px] font-semibold leading-relaxed">
+              {method.map((line, n) => <li key={n}>{line}</li>)}
+            </ol>
+          )}
+          {s.url && (
+            <a href={s.url} target="_blank" rel="noreferrer"
+               className="inline-flex items-center gap-1 text-xs font-extrabold mt-2 underline">
+              <Link2 size={12} /> recipe
+            </a>
+          )}
+        </div>
+      )}
+
+      <div className="flex gap-2 mt-3">
+        <button onClick={onCopy} disabled={copied}
+                className={`btn text-sm ${copied ? "bg-berry text-white shadow-sticker-sm" : "bg-white text-ink"}`}>
+          {copied ? <><Check size={15} strokeWidth={3} /> In our library</>
+                  : <><Copy size={15} /> Copy to our library</>}
+        </button>
+      </div>
     </div>
   );
 }
@@ -2819,8 +2977,219 @@ function LoginForm() {
   );
 }
 
+/* -------------------------------------------------------------- households */
+/* Each login belongs to one household; all plans, lists and the library are
+   the household's. Creating, joining and leaving go through database functions
+   (migration 0003) so nobody can add themselves to a household without a code. */
+
+async function loadHousehold(userId) {
+  const { data: me, error } = await supabase.from("household_members")
+    .select("household_id, show_shared").eq("user_id", userId).maybeSingle();
+  if (error) throw error;
+  if (!me) return null;
+  const [{ data: h, error: hErr }, { data: members, error: mErr }] = await Promise.all([
+    supabase.from("households").select("id, name, share_library").eq("id", me.household_id).single(),
+    supabase.from("household_members").select("user_id, email").eq("household_id", me.household_id).order("joined_at"),
+  ]);
+  if (hErr || mErr) throw hErr || mErr;
+  return { ...h, show_shared: me.show_shared, members: members || [] };
+}
+
+// Database errors raised by the household functions are written for people.
+const householdError = (e) => e?.message || "Something went wrong. Try again.";
+
+function HouseholdSetup({ onDone, onSignOut }) {
+  const [name, setName] = useState("");
+  const [code, setCode] = useState("");
+  const [busy, setBusy] = useState(null); // "create" | "join"
+  const [error, setError] = useState(null);
+
+  async function run(kind) {
+    setBusy(kind);
+    setError(null);
+    const { error } = kind === "create"
+      ? await supabase.rpc("create_household", { household_name: name })
+      : await supabase.rpc("join_household", { invite_code: code });
+    if (error) { setError(householdError(error)); setBusy(null); return; }
+    onDone();
+  }
+
+  return (
+    <div className="min-h-screen flex items-center justify-center px-5 bg-blush text-ink">
+      <div className="sticker w-full p-6" style={{ maxWidth: 380 }}>
+        <div className="flex items-center gap-3 mb-2">
+          <span className="w-11 h-11 rounded-2xl bg-butter border-2 border-ink flex items-center justify-center">
+            <Carrot size={24} />
+          </span>
+          <h1 className="font-display text-2xl font-semibold">Set up your household</h1>
+        </div>
+        <p className="text-sm font-semibold text-muted leading-relaxed mb-5">
+          Your household shares one weekly plan, shopping list and library.
+        </p>
+
+        <form onSubmit={(e) => { e.preventDefault(); if (name.trim()) run("create"); }}>
+          <label className="block text-xs font-extrabold mb-1.5" htmlFor="hh-name">Start a new one</label>
+          <input id="hh-name" value={name} onChange={(e) => setName(e.target.value)} maxLength={60}
+                 placeholder="Household name, e.g. The Parkers" className="field" />
+          <button type="submit" disabled={!!busy || !name.trim()} className="btn-primary w-full mt-3"
+                  style={{ opacity: busy || !name.trim() ? 0.5 : 1 }}>
+            {busy === "create" ? <Loader2 size={16} className="animate-spin" /> : "Create household"}
+          </button>
+        </form>
+
+        <form onSubmit={(e) => { e.preventDefault(); if (code.trim()) run("join"); }} className="mt-6">
+          <label className="block text-xs font-extrabold mb-1.5" htmlFor="hh-code">Or join one with an invite code</label>
+          <input id="hh-code" value={code} onChange={(e) => setCode(e.target.value.toUpperCase())}
+                 placeholder="8-character code" autoCapitalize="characters" className="field font-mono tracking-widest" />
+          <button type="submit" disabled={!!busy || !code.trim()} className="btn-plain w-full mt-3"
+                  style={{ opacity: busy || !code.trim() ? 0.5 : 1 }}>
+            {busy === "join" ? <Loader2 size={16} className="animate-spin" /> : "Join household"}
+          </button>
+        </form>
+
+        {error && (
+          <div className="mt-4 rounded-2xl border-2 border-ink bg-peach px-3.5 py-2.5 text-[13px] font-bold">{error}</div>
+        )}
+        <button onClick={onSignOut} className="mt-5 text-xs font-bold underline">Sign out</button>
+      </div>
+    </div>
+  );
+}
+
+function HouseholdToggle({ on, onClick, busy, disabled, title, children }) {
+  return (
+    <button onClick={onClick} disabled={disabled} aria-pressed={on}
+            className="w-full text-left flex items-start gap-3 py-2.5">
+      <span className={`mt-0.5 w-11 h-6 shrink-0 rounded-full border-2 border-ink relative ${on ? "bg-mint" : "bg-white"}`}>
+        <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-ink transition-all ${on ? "left-5" : "left-0.5"}`} />
+      </span>
+      <span>
+        <span className="block text-[15px] font-extrabold">
+          {title} {busy && <Loader2 size={13} className="inline animate-spin" />}
+        </span>
+        <span className="block text-xs font-semibold text-muted leading-relaxed">{children}</span>
+      </span>
+    </button>
+  );
+}
+
+function HouseholdPanel({ household, onChange, onSignOut, flash }) {
+  const [name, setName] = useState(household.name);
+  const [invite, setInvite] = useState(null);
+  const [busy, setBusy] = useState(null);
+  const [error, setError] = useState(null);
+  const [confirmLeave, setConfirmLeave] = useState(false);
+  const lastOne = household.members.length <= 1;
+
+  async function act(kind, fn) {
+    setBusy(kind);
+    setError(null);
+    const { data, error } = await fn();
+    setBusy(null);
+    if (error) { setError(householdError(error)); return null; }
+    return { data };
+  }
+
+  async function saveName() {
+    const n = name.trim();
+    if (!n || n === household.name) return;
+    if (await act("name", () => supabase.from("households").update({ name: n }).eq("id", household.id))) {
+      onChange();
+      flash("Renamed");
+    }
+  }
+
+  async function toggleShare() {
+    const on = !household.share_library;
+    if (await act("share", () => supabase.from("households").update({ share_library: on }).eq("id", household.id))) onChange();
+  }
+
+  async function toggleShowShared() {
+    if (await act("show", () => supabase.rpc("set_show_shared", { show: !household.show_shared }))) onChange();
+  }
+
+  async function makeInvite() {
+    const res = await act("invite", () => supabase.rpc("create_household_invite"));
+    if (res) setInvite(res.data);
+  }
+
+  async function leave() {
+    if (await act("leave", () => supabase.rpc("leave_household"))) onChange();
+  }
+
+  return (
+    <div>
+      <label className="block text-xs font-extrabold mb-1.5" htmlFor="hh-rename">Name</label>
+      <div className="flex gap-2">
+        <input id="hh-rename" value={name} onChange={(e) => setName(e.target.value)} maxLength={60} className="field flex-1" />
+        <button onClick={saveName} disabled={!!busy || !name.trim() || name.trim() === household.name}
+                className="btn-plain shrink-0" style={{ opacity: !name.trim() || name.trim() === household.name ? 0.5 : 1 }}>
+          Save
+        </button>
+      </div>
+
+      <h3 className="text-xs font-extrabold mt-5 mb-1.5">Members</h3>
+      <ul className="space-y-1">
+        {household.members.map((m) => (
+          <li key={m.user_id} className="text-sm font-bold truncate">{m.email || "Member"}</li>
+        ))}
+      </ul>
+
+      <div className="mt-3">
+        {invite ? (
+          <div className="rounded-2xl border-2 border-ink bg-white px-4 py-3">
+            <div className="font-mono text-2xl font-bold tracking-[0.3em] text-center">{invite}</div>
+            <p className="text-xs font-semibold text-muted text-center mt-1">
+              Works for 7 days. They sign in, choose "Join household" and type it in.
+            </p>
+            <button onClick={() => navigator.clipboard?.writeText(invite).then(() => flash("Code copied"))}
+                    className="btn-plain w-full mt-2 text-sm"><Copy size={14} /> Copy code</button>
+          </div>
+        ) : (
+          <button onClick={makeInvite} disabled={!!busy} className="btn-plain w-full text-sm">
+            {busy === "invite" ? <Loader2 size={16} className="animate-spin" /> : <><Plus size={15} /> Invite someone</>}
+          </button>
+        )}
+      </div>
+
+      <h3 className="text-xs font-extrabold mt-5">Sharing</h3>
+      <HouseholdToggle on={household.share_library} onClick={toggleShare} busy={busy === "share"} disabled={!!busy} title="Share our library">
+        Other households can see our recipes and cook times and copy them. Our ratings and plans stay private.
+      </HouseholdToggle>
+      <HouseholdToggle on={household.show_shared} onClick={toggleShowShared} busy={busy === "show"} disabled={!!busy} title="Show other households' libraries">
+        Adds an "Other households" view to the Library tab. Just for you.
+      </HouseholdToggle>
+
+      {error && (
+        <div className="mt-3 rounded-2xl border-2 border-ink bg-peach px-3.5 py-2.5 text-[13px] font-bold">{error}</div>
+      )}
+
+      <div className="flex gap-2 mt-6">
+        <button onClick={onSignOut} className="btn-plain flex-1 text-sm">Sign out</button>
+        {!confirmLeave ? (
+          <button onClick={() => setConfirmLeave(true)} className="btn-plain flex-1 text-sm">Leave household</button>
+        ) : (
+          <button onClick={leave} disabled={!!busy} className="btn flex-1 text-sm bg-berry text-white">
+            {busy === "leave" ? <Loader2 size={16} className="animate-spin" /> : lastOne ? "Leave and delete everything" : "Yes, leave"}
+          </button>
+        )}
+      </div>
+      {confirmLeave && (
+        <p className="text-xs font-bold text-muted mt-2">
+          {lastOne
+            ? "You're the only member, so leaving deletes this household's library, plans and history for good."
+            : "You'll lose access to this household's plans and library. The others keep them."}
+        </p>
+      )}
+    </div>
+  );
+}
+
 export default function SnackPlanner() {
   const [session, setSession] = useState(undefined);
+  const [household, setHousehold] = useState(undefined); // undefined while loading, null when the login has none
+  const [householdFailed, setHouseholdFailed] = useState(false);
+  const userId = session?.user?.id;
 
   useEffect(() => {
     if (!supabase) { setSession(null); return; }
@@ -2829,7 +3198,22 @@ export default function SnackPlanner() {
     return () => data.subscription.unsubscribe();
   }, []);
 
-  if (session === undefined) {
+  const refreshHousehold = useCallback(async () => {
+    if (!userId) return;
+    try {
+      setHousehold(await loadHousehold(userId));
+      setHouseholdFailed(false);
+    } catch (e) {
+      console.error("loading household failed", e);
+      setHouseholdFailed(true);
+    }
+  }, [userId]);
+
+  useEffect(() => { setHousehold(undefined); refreshHousehold(); }, [refreshHousehold]);
+
+  const signOut = () => supabase.auth.signOut();
+
+  if (session === undefined || (session && household === undefined && !householdFailed)) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-blush">
         <Loader2 className="animate-spin text-muted" size={22} />
@@ -2837,5 +3221,18 @@ export default function SnackPlanner() {
     );
   }
   if (!session) return <LoginForm />;
-  return <SnackPlannerApp key={session.user.id} onSignOut={() => supabase.auth.signOut()} />;
+  if (householdFailed && household === undefined) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center gap-3 px-5 bg-blush text-ink">
+        <p className="text-sm font-bold text-center">Couldn't load your household. Check your connection.</p>
+        <button onClick={refreshHousehold} className="btn-plain text-sm"><RefreshCw size={14} /> Try again</button>
+        <button onClick={signOut} className="text-xs font-bold underline">Sign out</button>
+      </div>
+    );
+  }
+  if (!household) return <HouseholdSetup onDone={refreshHousehold} onSignOut={signOut} />;
+  return (
+    <SnackPlannerApp key={household.id} household={household}
+                     onHouseholdChange={refreshHousehold} onSignOut={signOut} />
+  );
 }

@@ -2,6 +2,10 @@
 
 Newest first. Add an entry for every user-visible or infrastructure change.
 
+## 2026-11-11
+- Households: each login now belongs to one household with its own library, plans, shopping list and history. New accounts create a household or join one with a 7-day invite code; the Household panel (tap the household name by the week label) renames, invites, leaves and signs out. Migration `0003_households.sql` moves the existing shared data into one household holding every current account, and moves the library out of the core blob into `snackplan:library:v1`.
+- Library sharing: a household can share its library ("Share our library"), and each person can turn on "Show other households' libraries" to browse them live (cook times and full recipes included, ratings hidden) and copy recipes into their own library.
+
 ## 2026-11-01
 - The shopping list is one combined list again: the This week / Next week pills now filter which weeks feed it, instead of showing each week as its own part. Ticks and hand-added items are still kept per week.
 - Shopping list header is shorter: "Copy as text" is now a "Copy" button beside the title, leaving one row of filter pills. Removed the "Planning ahead" note from the Next week view.
