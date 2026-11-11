@@ -1,7 +1,7 @@
 {
   "id": "/snack-planner/",
-  "name": "Snack Planner",
-  "short_name": "Snacks",
+  "name": "Morsel",
+  "short_name": "Morsel",
   "start_url": "/snack-planner/",
   "scope": "/snack-planner/",
   "display": "standalone",

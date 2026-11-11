@@ -2987,10 +2987,11 @@ function LoginForm() {
     <div className="min-h-screen flex items-center justify-center px-5 bg-blush">
       <form onSubmit={submit} className="sticker w-full p-6" style={{ maxWidth: 360 }}>
         <div className="flex items-center gap-3 mb-5">
-          <span className="w-11 h-11 rounded-2xl bg-butter border-2 border-ink flex items-center justify-center">
-            <Carrot size={24} />
-          </span>
-          <h1 className="font-display text-2xl font-semibold">Snack Planner</h1>
+          <img
+            src={`${import.meta.env.BASE_URL}icon.svg`} alt=""
+            className="w-11 h-11 rounded-2xl border-2 border-ink"
+          />
+          <h1 className="font-display text-2xl font-semibold">Morsel</h1>
         </div>
         {!supabaseConfigured && (
           <p className="mb-3 text-[13px] font-bold text-muted">

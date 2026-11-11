@@ -1,8 +1,9 @@
-# Snack Planner
+# Morsel
 
-A vegetable-snack rotation planner (suggestions, shopping list, prep log,
-history) for a toddler, running as a static React app with Supabase for
-storage and AI-generated ideas.
+Morsel (formerly Snack Planner) is a vegetable-snack and dinner planner
+(suggestions, shopping list, prep log, history) for a toddler, running as a
+static React app with Supabase for storage and AI-generated ideas. The repo
+and folder names, and the `/snack-planner/` URL path, keep the old name.
 
 ## Project layout
 
