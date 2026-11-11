@@ -3,6 +3,7 @@
 Newest first. Add an entry for every user-visible or infrastructure change.
 
 ## 2026-11-11
+- Fixed the "Deploy Supabase functions" workflow failing without deploying: the latest Supabase CLI needs `--yes` to deploy from CI.
 - Sign-up with approval: the sign-in card can create an account (email confirmation). New accounts can join a household with an invite code, but need `profiles.approved` ticked in Supabase to start one. Migration `0004_approval_limits_removal.sql` approves every existing account.
 - AI features now require being in a household, and recipe imports (link, photo, "Load the full recipe") are capped at 10 per person per 24 hours, enforced in the `snack-ai` function.
 - A household's creator can remove other members from the Household panel; if the creator leaves, the longest-standing member takes over. Renaming and the sharing switch now go through a database function so members can't change who the creator is (migration `0005_idea_cap_creator_removal.sql`).
