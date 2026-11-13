@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo, useRef, useCallback } from "react"
 import {
   Carrot, ShoppingBasket, ClipboardCheck, BookMarked, TrendingUp,
   Plus, Check, X, Link2, Loader2, Copy, Search, RefreshCw,
-  ChevronDown, ChevronRight, Trash2, Sparkles, Clock, Pencil, Camera, ChefHat,
+  ChevronDown, ChevronRight, Trash2, Sparkles, Clock, Pencil, Camera, ChefHat, Refrigerator,
 } from "lucide-react";
 import { supabase, supabaseConfigured } from "./lib/supabaseClient";
 import { THEMES, loadTheme, saveTheme } from "./themes.js";
@@ -17,6 +17,7 @@ const KEY_LIBRARY = "snackplan:library:v1"; // recipes; its own key so it can be
 const KEY_WEEK = "snackplan:week:v1";       // this week: suggestions, picks, prepped, list state
 const KEY_NEXT = "snackplan:nextweek:v1";   // next week's plan, made ahead; becomes "this week" on Monday
 const KEY_HAVE = "snackplan:pantry:v1";     // ingredients we always have at home
+const KEY_FRIDGE = "snackplan:fridge:v1";   // leftovers in the fridge, and the ones eaten or tossed
 
 async function loadKey(householdId, key, fallback) {
   try {
@@ -80,6 +81,61 @@ function dayInfo(weekId, idx) {
     long: d.toLocaleDateString(undefined, { weekday: "long" }),
     date: d.getDate(),
   };
+}
+
+/* ---------------------------------------------------------------- fridge */
+
+const HOUR = 3600000;
+const FRIDGE_SOON_HOURS = 48; // yellow: eat soon
+const FRIDGE_BAD_HOURS = 72;  // red: going bad
+const FRIDGE_GONE_KEEP = 200; // eaten/tossed records kept for later waste stats
+const emptyFridge = () => ({ items: [], gone: [] });
+
+// A dinner ticked on the calendar counts as cooked at 6pm on its (earliest) planned
+// day, never later than now. Returns null when the recipe isn't on a day.
+function dinnerDayCookedAt(w, id, now = Date.now()) {
+  const day = DINNER_DAYS.find((d) => (w.dinners || {})[d] === id);
+  if (day == null) return null;
+  const d = new Date(w.id + "T18:00:00");
+  d.setDate(d.getDate() + day);
+  return Math.min(now, d.getTime());
+}
+
+// Keep the cooked time of calendar-dated dinners in step with their day, so moving a
+// cooked dinner to the day it was really made fixes its age in the fridge.
+function redateDinners(w) {
+  const cooked = w.cooked || {};
+  let out = null;
+  for (const [id, c] of Object.entries(cooked)) {
+    if (!c.byDay || !w.prepped.includes(id)) continue;
+    const at = dinnerDayCookedAt(w, id);
+    if (at != null && at !== c.at) out = { ...(out || cooked), [id]: { ...c, at } };
+  }
+  return out ? { ...w, cooked: out } : w;
+}
+
+function fridgeLevel(cookedAt, now) {
+  const hours = (now - cookedAt) / HOUR;
+  return hours >= FRIDGE_BAD_HOURS ? "bad" : hours >= FRIDGE_SOON_HOURS ? "soon" : "fresh";
+}
+
+function fridgeAgeText(cookedAt, now) {
+  const hours = Math.max(0, (now - cookedAt) / HOUR);
+  if (hours < 1) return "just made";
+  if (hours < 24) return `${Math.floor(hours)} h old`;
+  const days = Math.floor(hours / 24);
+  return `${days} day${days === 1 ? "" : "s"} old`;
+}
+
+function fridgeMadeText(cookedAt, now) {
+  const day = (t) => { const d = new Date(t); d.setHours(0, 0, 0, 0); return d.getTime(); };
+  const diff = Math.round((day(now) - day(cookedAt)) / 86400000);
+  if (diff <= 0) return "Made today";
+  if (diff === 1) return "Made yesterday";
+  const d = new Date(cookedAt);
+  return diff < 7
+    ? `Made ${d.toLocaleDateString(undefined, { weekday: "short" })}`
+    : `Made ${d.toLocaleDateString(undefined, { month: "short", day: "numeric" })}`;
 }
 
 function weeksBetween(aId, bId) {
@@ -805,6 +861,7 @@ const emptyWeek = (id) => ({
   selected: [],
   dinners: {},   // day index (Mon = 0) -> library snack id; every planned dinner is also in `selected`
   prepped: [],
+  cooked: {},    // recipe id -> { at: ms, byDay }: when it was cooked; byDay = dated from its dinner day
   logs: {},
   libraryOnly: false,
   checked: {},
@@ -848,6 +905,8 @@ function SnackPlannerApp({ household, userId, onHouseholdChange, onSignOut }) {
   const [listView, setListView] = useState(loadListView); // shopping list filters, per device
   const [planWhich, setPlanWhich] = useState("this"); // which week the Week tab (and Library buttons) plan: "this" | "next"
   const [pantry, setPantry] = useState([]);
+  const [fridge, setFridge] = useState(emptyFridge); // { items: leftovers in the fridge, gone: eaten/tossed }
+  const [now, setNow] = useState(() => Date.now()); // ticks so fridge ages and colors stay current
   const [sectionMemory, setSectionMemory] = useState({}); // ingredient name -> section, learned from Claude
   const [cooking, setCooking] = useState(loadCooking); // { id, startedAt } while a recipe is being cooked
   const [householdOpen, setHouseholdOpen] = useState(false);
@@ -862,12 +921,13 @@ function SnackPlannerApp({ household, userId, onHouseholdChange, onSignOut }) {
     (async () => {
       if (!supabaseConfigured) setStorageOk(false);
       const hid = household.id;
-      const [core, storedLib, storedWeek, storedNext, have] = await Promise.all([
+      const [core, storedLib, storedWeek, storedNext, have, storedFridge] = await Promise.all([
         loadKey(hid, KEY_CORE, null),
         loadKey(hid, KEY_LIBRARY, null),
         loadKey(hid, KEY_WEEK, null),
         loadKey(hid, KEY_NEXT, null),
         loadKey(hid, KEY_HAVE, []),
+        loadKey(hid, KEY_FRIDGE, null),
       ]);
       if (cancelled) return;
 
@@ -904,6 +964,10 @@ function SnackPlannerApp({ household, userId, onHouseholdChange, onSignOut }) {
       setWeek(cur || emptyWeek(thisWeekId));
       setNextWeek(nxt);
       setPantry(Array.isArray(have) ? have : []);
+      setFridge({
+        items: Array.isArray(storedFridge?.items) ? storedFridge.items : [],
+        gone: Array.isArray(storedFridge?.gone) ? storedFridge.gone : [],
+      });
       setSectionMemory(core?.sections || {});
       setReady(true);
     })();
@@ -924,6 +988,34 @@ function SnackPlannerApp({ household, userId, onHouseholdChange, onSignOut }) {
   useEffect(() => { if (ready) saveKey(household.id, KEY_WEEK, week); }, [week, ready]);
   useEffect(() => { if (ready) saveKey(household.id, KEY_NEXT, nextWeek); }, [nextWeek, ready]);
   useEffect(() => { if (ready) saveKey(household.id, KEY_HAVE, pantry); }, [pantry, ready]);
+  useEffect(() => { if (ready) saveKey(household.id, KEY_FRIDGE, fridge); }, [fridge, ready]);
+
+  // Fridge ages are worked out from `now`; refresh it every few minutes and whenever
+  // the app comes back to the foreground, so colors change without a reload.
+  useEffect(() => {
+    const tick = () => setNow(Date.now());
+    const timer = setInterval(tick, 5 * 60000);
+    const onVisible = () => { if (document.visibilityState === "visible") tick(); };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => { clearInterval(timer); document.removeEventListener("visibilitychange", onVisible); };
+  }, []);
+
+  // This week's leftovers follow the week: a recipe unmarked as cooked (or taken out
+  // of the week) leaves the fridge, and a dinner moved to another day takes its new date.
+  useEffect(() => {
+    if (!ready) return;
+    setFridge((f) => {
+      let changed = false;
+      const items = f.items.flatMap((i) => {
+        if (i.weekId !== week.id) return [i];
+        if (!week.prepped.includes(i.recipeId)) { changed = true; return []; }
+        const at = week.cooked?.[i.recipeId]?.at;
+        if (at && at !== i.cookedAt) { changed = true; return [{ ...i, cookedAt: at }]; }
+        return [i];
+      });
+      return changed ? { ...f, items } : f;
+    });
+  }, [ready, week.id, week.prepped, week.cooked]);
 
   // A session whose recipe has since been deleted can't be finished; drop it.
   useEffect(() => {
@@ -1018,11 +1110,72 @@ function SnackPlannerApp({ household, userId, onHouseholdChange, onSignOut }) {
     }
   }
 
+  // The round checks. A dinner on a day counts as cooked on that day; anything else
+  // counts as cooked now. Unmarking also takes it out of the fridge (see the sync above).
   function togglePrepped(id) {
-    setWeek((w) => ({
-      ...w,
-      prepped: w.prepped.includes(id) ? w.prepped.filter((x) => x !== id) : [...w.prepped, id],
+    if (week.prepped.includes(id)) {
+      setWeek((w) => {
+        const cooked = { ...(w.cooked || {}) };
+        delete cooked[id];
+        return { ...w, prepped: w.prepped.filter((x) => x !== id), cooked };
+      });
+      return;
+    }
+    const dayAt = dinnerDayCookedAt(week, id);
+    markCooked(id, dayAt ?? Date.now(), dayAt != null);
+  }
+
+  function markCooked(id, at, byDay) {
+    setWeek((w) => (w.prepped.includes(id) ? w : {
+      ...w, prepped: [...w.prepped, id], cooked: { ...(w.cooked || {}), [id]: { at, byDay } },
     }));
+    const s = [...library, ...suggestionPool].find((x) => x.id === id);
+    if (s && leftoversByDefault(s)) putInFridge(id, at);
+  }
+
+  /* ------- fridge ------- */
+
+  // Dinners and weekend batch snacks leave leftovers unless the Log says otherwise.
+  function leftoversByDefault(s) {
+    return hasTag(s, DINNER_TAG) || s.tier === "batch" || Object.values(week.dinners || {}).includes(s.id);
+  }
+
+  function cookedAtFor(id) {
+    return week.cooked?.[id]?.at ?? dinnerDayCookedAt(week, id) ?? Date.now();
+  }
+
+  // Put this week's leftovers of a recipe in the fridge. Leftovers already eaten or
+  // tossed only come back when `restore` is set (the Log's "Put back").
+  function putInFridge(id, at, restore = false) {
+    const s = [...library, ...suggestionPool].find((x) => x.id === id);
+    if (!s) return;
+    const mine = (i) => i.recipeId === id && i.weekId === week.id;
+    setFridge((f) => {
+      if (f.items.some(mine)) return f;
+      if (!restore && f.gone.some(mine)) return f;
+      const item = {
+        id: newId(), recipeId: id, weekId: week.id, title: s.title, vegetable: s.vegetable,
+        dinner: hasTag(s, DINNER_TAG) || Object.values(week.dinners || {}).includes(id), cookedAt: at,
+      };
+      return { items: [...f.items, item], gone: f.gone.filter((g) => !mine(g)) };
+    });
+  }
+
+  // The Log's "Leftovers in the fridge" box.
+  function setLeftovers(id, on) {
+    if (on) { putInFridge(id, cookedAtFor(id), true); return; }
+    setFridge((f) => ({ ...f, items: f.items.filter((i) => !(i.recipeId === id && i.weekId === week.id)) }));
+  }
+
+  // Eaten or tossed: out of the fridge, kept on record for later waste stats.
+  function clearFromFridge(itemId, outcome) {
+    const item = fridge.items.find((i) => i.id === itemId);
+    if (!item) return;
+    setFridge((f) => ({
+      items: f.items.filter((i) => i.id !== itemId),
+      gone: [{ ...item, outcome, goneAt: Date.now() }, ...f.gone.filter((g) => g.id !== itemId)].slice(0, FRIDGE_GONE_KEEP),
+    }));
+    flash(outcome === "tossed" ? `Tossed ${item.title}` : `Ate the ${item.title}`);
   }
 
   /* ------- cooking ------- */
@@ -1045,7 +1198,7 @@ function SnackPlannerApp({ household, userId, onHouseholdChange, onSignOut }) {
     const seconds = Math.max(1, Math.round((Date.now() - cooking.startedAt) / 1000));
     const { id } = cooking;
     setLibrary((lib) => lib.map((s) => (s.id === id ? { ...s, cookTimes: [...(s.cookTimes || []), seconds] } : s)));
-    setWeek((w) => (w.prepped.includes(id) ? w : { ...w, prepped: [...w.prepped, id] }));
+    if (!week.prepped.includes(id)) markCooked(id, Date.now(), false);
     saveCooking(null);
     setCooking(null);
     flash(`Cooked in ${Math.max(1, Math.round(seconds / 60))} min`);
@@ -1156,7 +1309,7 @@ function SnackPlannerApp({ household, userId, onHouseholdChange, onSignOut }) {
       if (prev && prev !== snack.id && !Object.values(dinners).includes(prev)) {
         next = { ...next, selected: next.selected.filter((x) => x !== prev), prepped: next.prepped.filter((x) => x !== prev) };
       }
-      return next;
+      return redateDinners(next);
     });
   }
 
@@ -1167,7 +1320,7 @@ function SnackPlannerApp({ household, userId, onHouseholdChange, onSignOut }) {
       const dinners = { ...w.dinners };
       delete dinners[day];
       return Object.values(dinners).includes(prev)
-        ? { ...w, dinners }
+        ? redateDinners({ ...w, dinners })
         : { ...w, dinners, selected: w.selected.filter((x) => x !== prev), prepped: w.prepped.filter((x) => x !== prev) };
     });
   }
@@ -1224,6 +1377,8 @@ function SnackPlannerApp({ household, userId, onHouseholdChange, onSignOut }) {
     [week.prepped, week.logs]
   );
 
+  const goingBad = fridge.items.filter((i) => fridgeLevel(i.cookedAt, now) === "bad").length;
+
   const shopLists = [
     { id: "this", label: "This week", snacks: selectedSnacks, week, setWeek },
     { id: "next", label: "Next week", snacks: nextSelected, week: nextWeek, setWeek: setNextWeek },
@@ -1241,6 +1396,7 @@ function SnackPlannerApp({ household, userId, onHouseholdChange, onSignOut }) {
     { id: "week", label: "Week", icon: Carrot, badge: 0 },
     { id: "list", label: "List", icon: ShoppingBasket, badge: 0 },
     { id: "log", label: "Log", icon: ClipboardCheck, badge: needsLogging },
+    { id: "fridge", label: "Fridge", icon: Refrigerator, badge: goingBad },
     { id: "library", label: "Library", icon: BookMarked, badge: 0 },
     { id: "history", label: "History", icon: TrendingUp, badge: 0 },
   ];
@@ -1262,6 +1418,7 @@ function SnackPlannerApp({ household, userId, onHouseholdChange, onSignOut }) {
                 {tab === "week" && "Our week"}
                 {tab === "list" && "Shopping list"}
                 {tab === "log" && "How'd it go?"}
+                {tab === "fridge" && "In the fridge"}
                 {tab === "library" && "Library"}
                 {tab === "history" && "History"}
               </h1>
@@ -1280,6 +1437,11 @@ function SnackPlannerApp({ household, userId, onHouseholdChange, onSignOut }) {
               <button onClick={() => copyList(shopLists, listView, pantry, flash)} className="btn-plain shadow-sticker-sm text-sm shrink-0">
                 <Copy size={15} /> Copy
               </button>
+            )}
+            {tab === "fridge" && fridge.items.length > 0 && (
+              <span className="rounded-full bg-butter border-2 border-ink shadow-sticker-sm px-3 py-1.5 text-[13px] font-extrabold whitespace-nowrap">
+                {fridge.items.length} leftover{fridge.items.length === 1 ? "" : "s"}
+              </span>
             )}
             {tab === "log" && needsLogging > 0 && (
               <span className="rounded-full bg-butter border-2 border-ink shadow-sticker-sm px-3 py-1.5 text-[13px] font-extrabold whitespace-nowrap">
@@ -1329,8 +1491,13 @@ function SnackPlannerApp({ household, userId, onHouseholdChange, onSignOut }) {
           <LogView
             week={week} pool={[...library, ...suggestionPool]}
             onTogglePrepped={togglePrepped} onLog={logVerdict}
+            fridge={fridge} onLeftovers={setLeftovers}
             onGoToWeek={() => setTab("week")}
           />
+        )}
+
+        {tab === "fridge" && (
+          <FridgeView items={fridge.items} now={now} onClear={clearFromFridge} />
         )}
 
         {tab === "library" && (
@@ -2212,7 +2379,7 @@ function ShoppingView({ lists, view, setView, pantry, setPantry, onGoToWeek }) {
 
 /* --------------------------------------------------------------- log view */
 
-function LogView({ week, pool, onTogglePrepped, onLog, onGoToWeek }) {
+function LogView({ week, pool, onTogglePrepped, onLog, fridge, onLeftovers, onGoToWeek }) {
   const byId = new Map(pool.map((s) => [s.id, s]));
   // Chosen recipes, plus any cooked off-plan from the Library ("Cook Now").
   const ids = [...week.selected, ...week.prepped.filter((id) => !week.selected.includes(id))];
@@ -2252,7 +2419,7 @@ function LogView({ week, pool, onTogglePrepped, onLog, onGoToWeek }) {
               </div>
             </div>
 
-            {prepped ? (
+            {prepped ? (<>
               <div className="flex gap-2 mt-3">
                 {Object.entries(VERDICTS).map(([k, v]) => {
                   const on = verdict === k;
@@ -2264,9 +2431,84 @@ function LogView({ week, pool, onTogglePrepped, onLog, onGoToWeek }) {
                   );
                 })}
               </div>
-            ) : (
+              <LeftoversRow week={week} recipeId={s.id} fridge={fridge} onLeftovers={onLeftovers} />
+            </>) : (
               <p className="text-[13px] font-bold mt-3">Mark it {done} to rate it.</p>
             )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+/* The Log's leftovers box: ticked while this week's leftovers are in the fridge. Once
+   they've been eaten or tossed it says so, with "Put back" for a mistaken tap. */
+function LeftoversRow({ week, recipeId, fridge, onLeftovers }) {
+  const mine = (i) => i.recipeId === recipeId && i.weekId === week.id;
+  const inFridge = fridge.items.some(mine);
+  const gone = !inFridge && fridge.gone.find(mine);
+  if (gone) {
+    return (
+      <div className="flex items-center gap-2 mt-2 text-[13px] font-bold">
+        <Refrigerator size={16} className="shrink-0" />
+        <span className="flex-1">Leftovers {gone.outcome === "tossed" ? "tossed" : "eaten"}</span>
+        <button onClick={() => onLeftovers(recipeId, true)} className="min-h-[44px] px-2 underline">Put back</button>
+      </div>
+    );
+  }
+  return (
+    <button onClick={() => onLeftovers(recipeId, !inFridge)} aria-pressed={inFridge}
+            className="flex items-center gap-2.5 mt-2 -mb-1 min-h-[44px] text-[13px] font-bold text-left">
+      <span className={`w-6 h-6 rounded-lg border-2 border-ink flex items-center justify-center shrink-0 ${inFridge ? "bg-berry text-white" : "bg-white"}`}>
+        {inFridge && <Check size={14} strokeWidth={3.4} />}
+      </span>
+      Leftovers in the fridge
+    </button>
+  );
+}
+
+/* ------------------------------------------------------------ fridge view */
+
+const FRIDGE_LOOK = {
+  fresh: { card: "", chip: null },
+  soon: { card: "bg-butter", chip: "Eat soon" },
+  bad: { card: "bg-tomato", chip: "Going bad" },
+};
+
+function FridgeView({ items, now, onClear }) {
+  if (!items.length) {
+    return (
+      <Empty icon={Refrigerator}>
+        Nothing in the fridge. Dinners and weekend batch snacks show up here when you mark them cooked. For anything else, tick "Leftovers in the fridge" in the Log.
+      </Empty>
+    );
+  }
+  const sorted = [...items].sort((a, b) => a.cookedAt - b.cookedAt);
+  return (
+    <div className="px-5 space-y-3.5">
+      <p className="text-[13px] font-bold text-muted">Oldest first. Yellow after 2 days, red after 3.</p>
+      {sorted.map((i) => {
+        const look = FRIDGE_LOOK[fridgeLevel(i.cookedAt, now)];
+        return (
+          <div key={i.id} className={`sticker p-3.5 ${look.card}`}>
+            <div className="flex items-start gap-2">
+              <h3 className="font-display text-base font-semibold leading-tight flex-1 min-w-0">{i.title}</h3>
+              {look.chip && <span className="chip bg-white border-2 border-ink shrink-0">{look.chip}</span>}
+            </div>
+            <p className="text-xs font-extrabold mt-1.5 flex flex-wrap items-center gap-1.5">
+              <VegDot veg={i.vegetable} /> {i.dinner ? "Dinner" : "Snack"}
+              <span>·</span>{fridgeMadeText(i.cookedAt, now)}
+              <span>·</span>{fridgeAgeText(i.cookedAt, now)}
+            </p>
+            <div className="flex gap-2 mt-3">
+              <button onClick={() => onClear(i.id, "eaten")} className="btn-plain flex-1 shadow-sticker-sm">
+                <Check size={16} strokeWidth={2.6} /> Eaten
+              </button>
+              <button onClick={() => onClear(i.id, "tossed")} className="btn-plain flex-1">
+                <Trash2 size={16} /> Tossed
+              </button>
+            </div>
           </div>
         );
       })}

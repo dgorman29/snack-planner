@@ -18,6 +18,7 @@ export default {
         ice: "rgb(var(--ice) / <alpha-value>)",
         lilac: "rgb(var(--lilac) / <alpha-value>)",
         berry: "rgb(var(--berry) / <alpha-value>)",
+        tomato: "rgb(var(--tomato) / <alpha-value>)",
       },
       fontFamily: {
         sans: ["Nunito", "system-ui", "sans-serif"],

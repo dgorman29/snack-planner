@@ -3,6 +3,7 @@
 Newest first. Add an entry for every user-visible or infrastructure change.
 
 ## 2026-11-13
+- New Fridge tab for leftovers: dinners and Weekend batch snacks go in when marked cooked, sorted oldest first, yellow after 48 hours and red after 72, with "Eaten" and "Tossed" (recorded for later waste stats). The Log gets a "Leftovers in the fridge" box per cooked recipe. Ticked dinners are dated by their planned day. Stored in a new `snackplan:fridge:v1` key and a `cooked` map on the week; no migration needed.
 - Snack filters fit on one line: "Chosen (N)" moved up beside the This week / Next week pills, and the three tier filters share the row below. The shopping list's filters and section picker wrap instead of scrolling sideways if a screen is too narrow for them.
 - Theme picker in the Household panel with five light themes (Peach Jam, Mint Garden, Blueberry, Lemon, Lilac). Switching is instant and remembered per device in `localStorage` (`snackplan:theme:v1`). Palette colors are now CSS variables set from the new `src/themes.js`.
 

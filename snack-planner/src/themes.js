@@ -15,6 +15,7 @@ const SHARED = {
   mintink: "#2D4A3A",
   ice: "#D5E7F2",
   lilac: "#E6DCF2",
+  tomato: "#F06B5B", // fridge leftovers going bad (72 h+); red in every theme
 };
 
 export const THEMES = [

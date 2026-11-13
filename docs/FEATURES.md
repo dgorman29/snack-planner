@@ -3,7 +3,7 @@
 Current behavior of the app. Update this file whenever a feature is added, changed or removed.
 
 ## Look and feel
-- Cozy "Peach Jam" theme: blush background, outlined cards with a flat shadow, rounded Fredoka headings. Tabs are in a floating dark bar at the bottom; the current tab shows its name. The Log tab shows a count badge when prepped or cooked recipes need a rating.
+- Cozy "Peach Jam" theme: blush background, outlined cards with a flat shadow, rounded Fredoka headings. Tabs are in a floating dark bar at the bottom; the current tab shows its name. The Log tab shows a count badge when prepped or cooked recipes need a rating, and the Fridge tab one when leftovers are going bad (3 days or older).
 - Theme picker in the Household panel: Peach Jam (default), Mint Garden, Blueberry, Lemon or Lilac. Each changes the page background, outlines, text and accent color instantly. The choice is per device, not per account or household. Shopping-section and rating pastels look the same in every theme.
 
 ## Install as an app
@@ -68,6 +68,15 @@ Current behavior of the app. Update this file whenever a feature is added, chang
 - Recipes imported by URL or photo keep the complete method. For older imports, or recipes with only a short description, the cooking view shows the short text and, when the recipe has a link, a "Load the full recipe" button that has Claude read the page and saves the result. The full recipe can also be typed or edited in the Library Edit form ("Full recipe", one step per line).
 - "Cook Now" on a Library card cooks a recipe that isn't in the week's plan. It works the same way: Finished records the cook time and marks it cooked/prepped this week, so it shows up in the Log to rate (and in History). It isn't added to a day, the Snacks view or the shopping list. Unmarking it in the Log removes it from the Log again.
 - The round check on the other days' dinner tiles and the Log tab still mark a recipe cooked without timing it.
+- **When it counts as cooked** (for the Fridge): Finished is the moment you tap it. A round check on a dinner planned on a day dates it 6pm that day (or now, if that's earlier), so a dinner cooked on another day should be moved to that day on the Week tab; moving a ticked dinner later re-dates it. A round check on anything else (snacks, Cook Now recipes) is the moment it's ticked.
+
+## Fridge tab
+- Shows the leftovers in the fridge, oldest first. Each card shows the recipe, Dinner or Snack, the day it was made and how old it is ("21 h old", "2 days old").
+- After 2 days (48 hours) a card turns yellow with "Eat soon"; after 3 days (72 hours) it turns red with "Going bad". Ages refresh every few minutes and when the app comes back to the foreground.
+- "Eaten" and "Tossed" take a leftover out of the fridge. The app keeps a record of which it was (the latest 200) for food-waste stats later; nothing shows it yet.
+- Dinners and Weekend batch snacks go into the fridge when they're marked cooked or prepped. Other snacks don't, unless "Leftovers in the fridge" is ticked in the Log.
+- Unmarking a recipe as cooked, or taking it out of the week, takes its leftovers out of the fridge too. Leftovers stay when the week rolls over on Monday.
+- The fridge is shared by everyone in the household. It only tracks cooked recipes; groceries aren't tracked.
 
 ## List tab
 - One combined list built from the chosen recipes (dinners and snacks) of the weeks shown. Duplicate ingredients (same name and unit) are summed across recipes and weeks, and rows used by several recipes say "for N recipes". A recipe chosen in both weeks counts twice. A line under the filters shows the recipe count.
@@ -79,6 +88,7 @@ Current behavior of the app. Update this file whenever a feature is added, chang
 
 ## Log tab
 - Lists the week's chosen recipes plus anything cooked off-plan with "Cook Now". Prepped snacks and cooked dinners can be rated Loved it, Ate some, or Refused. Ratings drive future suggestions. Dinner cards show their day ("Tue dinner") and say "cooked" instead of "prepped".
+- Cooked or prepped cards have a "Leftovers in the fridge" box under the rating buttons. It starts ticked for dinners and Weekend batch snacks and unticked for other snacks; ticking or unticking it puts the leftovers in or takes them out of the Fridge tab. Once they've been eaten or tossed, the card says so, with "Put back" to undo a mistaken tap.
 
 ## Library tab
 - 14 seeded snacks (no seeded dinners). Search by title, vegetable or ingredient. Filter pills: All, Weekday dinner, Snacks. Delete recipes.
