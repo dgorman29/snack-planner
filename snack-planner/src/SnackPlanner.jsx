@@ -686,14 +686,16 @@ function parseIngredientLines(text, previous = []) {
 
 /* --------------------------------------------------------------- UI bits */
 
-function Pill({ active, onClick, children }) {
+// `compact` trims the side padding; `fill` lets pills share a row's width so a
+// full row of them fits a narrow phone without scrolling.
+function Pill({ active, onClick, children, compact, fill }) {
   return (
     <button
       onClick={onClick}
       aria-pressed={!!active}
-      className={`min-h-[44px] px-4 rounded-full border-2 border-ink text-[13px] font-extrabold whitespace-nowrap shrink-0 ${
-        active ? "bg-butter" : "bg-white"
-      }`}
+      className={`min-h-[44px] ${compact ? "px-3" : "px-4"} rounded-full border-2 border-ink text-[13px] font-extrabold whitespace-nowrap ${
+        fill ? "flex-auto" : "shrink-0"
+      } ${active ? "bg-butter" : "bg-white"}`}
     >
       {children}
     </button>
@@ -1401,12 +1403,29 @@ function WeekView({
   onClearDinnersWeek, onGoToLibrary, selectedCount, onGoToList,
 }) {
   const isNext = planWhich === "next";
+  // "Chosen" filters the snack list, but sits up here beside the week pills so the
+  // snack tier filters below fit on one line.
+  const [chosenOnly, setChosenOnly] = useState(false);
+  const snackPool = useMemo(() => pool.filter((s) => !hasTag(s, DINNER_TAG)), [pool]);
+  // Every snack chosen this week, even one a later "New set" dropped from the suggestions.
+  const chosen = useMemo(() => {
+    const byId = new Map([...library, ...pool].map((s) => [s.id, s]));
+    return week.selected.map((id) => byId.get(id)).filter((s) => s && !hasTag(s, DINNER_TAG));
+  }, [week.selected, library, pool]);
+  const showChosen = mode === "snacks" && (snackPool.length > 0 || chosen.length > 0);
   return (
     <div>
       <div className="px-5 mb-3 flex gap-2">
         {[["this", "This week"], ["next", "Next week"]].map(([id, label]) => (
-          <Pill key={id} active={planWhich === id} onClick={() => setPlanWhich(id)}>{label}</Pill>
+          <Pill key={id} compact active={planWhich === id} onClick={() => setPlanWhich(id)}>{label}</Pill>
         ))}
+        {showChosen && (
+          <span className="ml-auto">
+            <Pill compact active={chosenOnly} onClick={() => setChosenOnly((v) => !v)}>
+              Chosen ({chosen.length})
+            </Pill>
+          </span>
+        )}
       </div>
       <div className="px-5 mb-4">
         <div className="flex p-[3px] bg-white border-2 border-ink rounded-[18px] shadow-sticker">
@@ -1430,7 +1449,7 @@ function WeekView({
         />
       ) : (
         <SnacksView
-          week={week} isNext={isNext} setWeek={setWeek} pool={pool} library={library} busy={busy}
+          week={week} isNext={isNext} setWeek={setWeek} pool={snackPool} chosen={chosen} chosenOnly={chosenOnly} busy={busy}
           onBuild={onBuild} onToggleSelect={onToggleSelect} onTogglePrepped={onTogglePrepped}
           onStartCooking={onStartCooking}
         />
@@ -1680,16 +1699,10 @@ function DinnerPicker({ dinners, week, day, current, onPick, onClear, onGoToLibr
 
 /* ---- snacks: the suggestion list */
 
-function SnacksView({ week, isNext, setWeek, pool: allPool, library, busy, onBuild, onToggleSelect, onTogglePrepped, onStartCooking }) {
-  const pool = allPool.filter((s) => !hasTag(s, DINNER_TAG));
+// `pool` is already snacks only; `chosen` and `chosenOnly` come from WeekView,
+// which shows the Chosen pill beside the week pills.
+function SnacksView({ week, isNext, setWeek, pool, chosen, chosenOnly, busy, onBuild, onToggleSelect, onTogglePrepped, onStartCooking }) {
   const [tierFilter, setTierFilter] = useState([]);
-  const [chosenOnly, setChosenOnly] = useState(false);
-
-  // Every snack chosen this week, even one a later "New set" dropped from the suggestions.
-  const chosen = useMemo(() => {
-    const byId = new Map([...library, ...allPool].map((s) => [s.id, s]));
-    return week.selected.map((id) => byId.get(id)).filter((s) => s && !hasTag(s, DINNER_TAG));
-  }, [week.selected, library, allPool]);
 
   const base = chosenOnly ? chosen : pool;
   const shown = base.filter((s) => !tierFilter.length || tierFilter.includes(s.tier));
@@ -1727,12 +1740,9 @@ function SnacksView({ week, isNext, setWeek, pool: allPool, library, busy, onBui
       </div>
 
       {(pool.length > 0 || chosen.length > 0) && (
-        <div className="flex flex-wrap gap-2 mb-4 py-1">
-          <Pill active={chosenOnly} onClick={() => setChosenOnly((v) => !v)}>
-            Chosen ({chosen.length})
-          </Pill>
+        <div className="flex gap-2 mb-4 py-1">
           {TIER_ORDER.map((t) => (
-            <Pill key={t} active={tierFilter.includes(t)} onClick={() => toggleTier(t)}>
+            <Pill key={t} compact fill active={tierFilter.includes(t)} onClick={() => toggleTier(t)}>
               {TIERS[t].label}
             </Pill>
           ))}

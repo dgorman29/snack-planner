@@ -3,7 +3,7 @@
 Newest first. Add an entry for every user-visible or infrastructure change.
 
 ## 2026-11-13
-- Filter pills on the Snacks view and the shopping list, and the shopping list's section picker, now wrap onto a second line instead of scrolling sideways off the screen.
+- Snack filters fit on one line: "Chosen (N)" moved up beside the This week / Next week pills, and the three tier filters share the row below. The shopping list's filters and section picker wrap instead of scrolling sideways if a screen is too narrow for them.
 - Theme picker in the Household panel with five light themes (Peach Jam, Mint Garden, Blueberry, Lemon, Lilac). Switching is instant and remembered per device in `localStorage` (`snackplan:theme:v1`). Palette colors are now CSS variables set from the new `src/themes.js`.
 
 ## 2026-11-11
