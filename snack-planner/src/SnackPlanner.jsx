@@ -5,6 +5,7 @@ import {
   ChevronDown, ChevronRight, Trash2, Sparkles, Clock, Pencil, Camera, ChefHat,
 } from "lucide-react";
 import { supabase, supabaseConfigured } from "./lib/supabaseClient";
+import { THEMES, loadTheme, saveTheme } from "./themes.js";
 
 /* ---------------------------------------------------------------- storage */
 /* Same keys as the original Artifact version (window.storage), now rows in
@@ -768,7 +769,7 @@ function Sheet({ open, onClose, title, children }) {
 
   if (!open) return null;
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: "rgba(61,43,43,0.5)" }}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: "rgb(var(--ink) / 0.5)" }}>
       <div role="dialog" aria-modal="true" aria-label={title}
            className="bg-blush w-full rounded-[28px] border-2 border-ink shadow-sticker-lg overflow-y-auto"
            style={{ maxWidth: 520, maxHeight: "calc(100dvh - 2rem)" }}>
@@ -1522,7 +1523,7 @@ function DinnersView({ week, isNext, library, dinnerLibrary, onAssign, onClear, 
                   {cookedNote(s)}
                 </div>
               </div>
-              <svg width="64" height="64" viewBox="0 0 64 64" fill="none" stroke="#3D2B2B" strokeWidth="2.2"
+              <svg width="64" height="64" viewBox="0 0 64 64" fill="none" stroke="rgb(var(--ink))" strokeWidth="2.2"
                    strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className="shrink-0">
                 <circle cx="32" cy="32" r="27" fill="#FFFFFF" /><circle cx="32" cy="32" r="17" />
                 <path d="M26 35c0-6 4-10 10-10 0 6-4 10-10 10z" fill="#9BCFA8" /><path d="M26 35l7-7" />
@@ -3143,6 +3144,39 @@ function HouseholdToggle({ on, onClick, busy, disabled, title, children }) {
   );
 }
 
+// Colour theme for this device only. Applies instantly; see themes.js.
+function ThemePicker() {
+  const [theme, setTheme] = useState(loadTheme);
+  const pick = (id) => { saveTheme(id); setTheme(id); };
+  return (
+    <>
+      <h3 className="text-xs font-extrabold mt-5">Theme</h3>
+      <p className="text-xs font-semibold text-muted mb-2">Just for this device.</p>
+      <div className="grid grid-cols-5 gap-2" role="radiogroup" aria-label="Colour theme">
+        {THEMES.map((t) => {
+          const on = t.id === theme;
+          return (
+            <button key={t.id} role="radio" aria-checked={on} onClick={() => pick(t.id)}
+                    className="flex flex-col items-center gap-1 min-h-[44px] rounded-2xl py-1.5">
+              <span className={`relative w-10 h-10 rounded-full border-2 border-ink overflow-hidden ${on ? "shadow-sticker-sm" : ""}`}
+                    style={{ background: `linear-gradient(135deg, ${t.colors.blush} 50%, ${t.colors.berry} 50%)` }}>
+                {on && (
+                  <span className="absolute inset-0 flex items-center justify-center">
+                    <span className="w-5 h-5 rounded-full bg-white border-2 border-ink flex items-center justify-center">
+                      <Check size={11} strokeWidth={3} />
+                    </span>
+                  </span>
+                )}
+              </span>
+              <span className={`text-[11px] leading-tight text-center ${on ? "font-extrabold" : "font-bold text-muted"}`}>{t.name}</span>
+            </button>
+          );
+        })}
+      </div>
+    </>
+  );
+}
+
 function HouseholdPanel({ household, userId, onChange, onSignOut, flash }) {
   const [name, setName] = useState(household.name);
   const [invite, setInvite] = useState(null);
@@ -3260,6 +3294,8 @@ function HouseholdPanel({ household, userId, onChange, onSignOut, flash }) {
       <HouseholdToggle on={household.show_shared} onClick={toggleShowShared} busy={busy === "show"} disabled={!!busy} title="Show other households' libraries">
         Adds an "Other households" view to the Library tab. Just for you.
       </HouseholdToggle>
+
+      <ThemePicker />
 
       {error && (
         <div className="mt-3 rounded-2xl border-2 border-ink bg-peach px-3.5 py-2.5 text-[13px] font-bold">{error}</div>

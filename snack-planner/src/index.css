@@ -14,7 +14,7 @@
     opacity: 0.8;
   }
   button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visible {
-    outline: 3px solid #C2385B;
+    outline: 3px solid rgb(var(--berry));
     outline-offset: 2px;
   }
 }

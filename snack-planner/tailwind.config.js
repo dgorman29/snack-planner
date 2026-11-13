@@ -3,29 +3,30 @@ export default {
   content: ["./index.html", "./src/**/*.{js,jsx}"],
   theme: {
     extend: {
-      // Peach Jam palette. Change a value here and the whole app follows.
+      // Colours come from CSS variables set by src/themes.js, so the theme
+      // picker can swap the whole palette at runtime. Edit themes there.
       colors: {
-        blush: "#FFF0EA",   // page background
-        ink: "#3D2B2B",     // text and outlines
-        muted: "#7A5A58",   // secondary text
-        line: "#FFE3D8",    // soft dividers
-        dim: "#B98E88",     // dashed "add" borders
-        peach: "#FFD3C2",
-        butter: "#FFE7A3",
-        mint: "#CDEBD6",
-        mintink: "#2D4A3A", // text on mint
-        ice: "#D5E7F2",
-        lilac: "#E6DCF2",
-        berry: "#C2385B",   // primary accent
+        blush: "rgb(var(--blush) / <alpha-value>)",
+        ink: "rgb(var(--ink) / <alpha-value>)",
+        muted: "rgb(var(--muted) / <alpha-value>)",
+        line: "rgb(var(--line) / <alpha-value>)",
+        dim: "rgb(var(--dim) / <alpha-value>)",
+        peach: "rgb(var(--peach) / <alpha-value>)",
+        butter: "rgb(var(--butter) / <alpha-value>)",
+        mint: "rgb(var(--mint) / <alpha-value>)",
+        mintink: "rgb(var(--mintink) / <alpha-value>)",
+        ice: "rgb(var(--ice) / <alpha-value>)",
+        lilac: "rgb(var(--lilac) / <alpha-value>)",
+        berry: "rgb(var(--berry) / <alpha-value>)",
       },
       fontFamily: {
         sans: ["Nunito", "system-ui", "sans-serif"],
         display: ["Fredoka", "Nunito", "system-ui", "sans-serif"],
       },
       boxShadow: {
-        sticker: "3px 3px 0 #3D2B2B",
-        "sticker-sm": "2px 2px 0 #3D2B2B",
-        "sticker-lg": "4px 4px 0 #3D2B2B",
+        sticker: "3px 3px 0 rgb(var(--ink))",
+        "sticker-sm": "2px 2px 0 rgb(var(--ink))",
+        "sticker-lg": "4px 4px 0 rgb(var(--ink))",
       },
     },
   },
