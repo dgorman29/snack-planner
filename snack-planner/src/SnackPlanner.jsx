@@ -1727,7 +1727,7 @@ function SnacksView({ week, isNext, setWeek, pool: allPool, library, busy, onBui
       </div>
 
       {(pool.length > 0 || chosen.length > 0) && (
-        <div className="flex gap-2 mb-4 overflow-x-auto py-1 -mx-5 px-5">
+        <div className="flex flex-wrap gap-2 mb-4 py-1">
           <Pill active={chosenOnly} onClick={() => setChosenOnly((v) => !v)}>
             Chosen ({chosen.length})
           </Pill>
@@ -2081,7 +2081,7 @@ function ShoppingView({ lists, view, setView, pantry, setPantry, onGoToWeek }) {
 
   return (
     <div className="px-5">
-      <div className="flex gap-2 mb-2 overflow-x-auto py-1 -mx-5 px-5">
+      <div className="flex flex-wrap gap-2 mb-2 py-1">
         {lists.map((l) => (
           <Pill key={l.id} active={view.show.includes(l.id)} onClick={() => toggleWeek(l.id)}>{l.label}</Pill>
         ))}
@@ -2163,7 +2163,7 @@ function ShoppingView({ lists, view, setView, pantry, setPantry, onGoToWeek }) {
             <Plus size={22} strokeWidth={2.6} />
           </button>
         </div>
-        <div className="flex gap-1.5 mt-2 overflow-x-auto">
+        <div className="flex flex-wrap gap-1.5 mt-2">
           {SECTIONS.map((s) => (
             <button key={s} onClick={() => setDraftSection(s)} aria-pressed={draftSection === s}
                     className={`min-h-[40px] px-3 rounded-full text-xs font-extrabold shrink-0 border-2 ${
