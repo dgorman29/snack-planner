@@ -4,6 +4,7 @@ Current behavior of the app. Update this file whenever a feature is added, chang
 
 ## Look and feel
 - Cozy "Peach Jam" theme: blush background, outlined cards with a flat shadow, rounded Fredoka headings. Tabs are in a floating dark bar at the bottom; the current tab shows its name. The Log tab shows a count badge when prepped or cooked recipes need a rating.
+- Theme picker in the Household panel: Peach Jam (default), Mint Garden, Blueberry, Lemon or Lilac. Each changes the page background, outlines, text and accent color instantly. The choice is per device, not per account or household. Shopping-section and rating pastels look the same in every theme.
 
 ## Install as an app
 - Installable as a standalone app (Chrome on Android: menu > Install app). Opens full-screen with its own icon. Requires being online; there is no offline mode.
@@ -16,7 +17,7 @@ Current behavior of the app. Update this file whenever a feature is added, chang
 
 ## Households
 - Each login belongs to exactly one household. Everyone in a household shares its library, weekly plans, shopping list, pantry and history; other households can't see any of it.
-- The household name sits next to the week label. Tapping it opens the Household panel: rename, see members (by email, yours marked "(you)", the creator marked "created it"), "Remove" another member (creator only), "Invite someone", the two sharing switches, "Sign out" and "Leave household".
+- The household name sits next to the week label. Tapping it opens the Household panel: rename, see members (by email, yours marked "(you)", the creator marked "created it"), "Remove" another member (creator only), "Invite someone", the two sharing switches, the theme picker, "Sign out" and "Leave household".
 - Only the household's creator sees "Remove". It asks "Yes, remove" first. The removed person loses access straight away and lands on "Set up your household" next time they open the app; everything they added stays with the household. To remove yourself, use "Leave household".
 - "Invite someone" makes an 8-character code that works for 7 days and can be used by more than one person. They sign in, choose "Join household" and type it in (any case).
 - "Leave household" asks to confirm. The last member to leave deletes the household and all its data; the panel says so first. After leaving, the account is back at "Set up your household".

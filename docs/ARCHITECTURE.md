@@ -46,25 +46,27 @@ Five keys, each a JSON blob in `household_data` for the household (originally `w
 - `snackplan:nextweek:v1`: next week's plan, same shape as `snackplan:week:v1` with next Monday as its `id`. On load, if the stored current week is out of date it is archived as before, and a stored next week whose `id` is now this Monday becomes the current week. A next week with any other `id` is replaced by an empty one. Next week's `prepped` and `logs` stay empty because cooking and rating only apply to the current week.
 - `snackplan:pantry:v1`: ingredients always on hand
 
-Two more keys live in the browser's `localStorage`, not Supabase, both per device on purpose:
+Three more keys live in the browser's `localStorage`, not Supabase, all per device on purpose:
 - `snackplan:cooking:v1`: the in-progress cooking session `{ id, startedAt }`, removed on Finished or Cook Later.
 - `snackplan:listview:v1`: the shopping list filters `{ show: ["this", "next"], hideBought }`.
+- `snackplan:theme:v1`: the chosen color theme id (`peach`, `mint`, `blueberry`, `lemon`, `lilac`).
 
 Users sign in with Supabase Auth email/password. Sign-up is controlled in the dashboard (Authentication > Sign In / Providers > "Allow new users to sign up"; keep "Confirm email" on). The sign-up form sends `emailRedirectTo` as the site's own URL, so that URL must be in Authentication > URL Configuration (Site URL or Redirect URLs). The old `kv_store` table is kept as a backup from before households, but 0003 dropped its policies so the app can't reach it; drop it in a later migration once nothing needs it.
 
 Migration 0003 put every existing account into one household named "Our household" with the old `kv_store` data. Accounts that should have their own household leave it from the Household panel and create a new one.
 
 ## Styling
-- Tailwind with a custom palette and fonts in `snack-planner/tailwind.config.js` (`blush`, `ink`, `peach`, `butter`, `mint`, `berry`, etc.; `font-display` is Fredoka, the default sans is Nunito). Change a color there and the whole app follows.
+- Tailwind with a custom palette and fonts in `snack-planner/tailwind.config.js` (`blush`, `ink`, `peach`, `butter`, `mint`, `berry`, etc.; `font-display` is Fredoka, the default sans is Nunito). The palette entries are CSS variables (`rgb(var(--ink) / <alpha-value>)`), so opacity modifiers like `bg-ink/50` still work. The sticker shadows and focus outline use the same variables.
+- Color themes live in `src/themes.js`. Each theme sets `blush`, `ink`, `muted`, `line`, `dim` and `berry`; the pastels (`peach`, `butter`, `mint`, `mintink`, `ice`, `lilac`) are shared, because the hard-coded rating text colors (`VERDICTS[].tone`) are tuned to them. `applyTheme` writes the variables onto `<html>` and updates the `theme-color` meta tag; `main.jsx` calls it before the first render so there is no flash. To add a theme, add an entry to `THEMES` and keep muted text and the accent at 4.5:1 contrast or better against `blush` and white. To change a color, edit `themes.js`, not the Tailwind config.
 - `src/index.css` defines the shared component classes: `.sticker` (outlined card with offset shadow), `.btn` / `.btn-primary` / `.btn-plain`, `.field` (inputs) and `.chip`.
 - Fonts load from Google Fonts via a `<link>` in `index.html`, so the app needs a network connection for its typefaces (it already needs one for data).
-- Vegetable dot colors (`VEG_PALETTE` in `SnackPlanner.jsx`) are the only colors still set in JS.
+- Vegetable dot colors (`VEG_PALETTE`) and rating text colors (`VERDICTS[].tone`) in `SnackPlanner.jsx` are set in JS and stay the same in every theme.
 
 ## PWA install
 - The app is called Morsel (manifest `name`/`short_name`, `index.html` title, sign-in screen). The repo, folder and `/snack-planner/` path keep the old name on purpose, because the path is the installed app's identity.
 - `snack-planner/public/manifest.webmanifest` plus `icon-192.png`, `icon-512.png`, `apple-touch-icon.png`, linked from `index.html` via `%BASE_URL%`. No service worker. `icon.svg` is the source artwork (also the browser-tab icon and the sign-in screen mark).
 - The manifest `id`, `start_url` and `scope` are all `/snack-planner/`. Chrome identifies installed apps by these, and other apps on the same `github.io` origin would otherwise be mistaken for this one. Keep them in sync with the Vite `base`.
-- `theme_color` and `background_color` are the blush page color `#FFF0EA`; keep them in sync with `blush` in `tailwind.config.js`.
+- `theme_color` and `background_color` are the blush page color `#FFF0EA`; keep them in sync with the Peach Jam `blush` in `src/themes.js`. The installed app's splash screen always uses this color; the browser bar follows the chosen theme.
 - The PNG icons are rendered from `icon.svg` (full-bleed blush square, plate and sprig inside the central 80% so Android can mask it). To change the look, edit `icon.svg` and re-render the three PNGs at 192, 512 and 180 px, for example by screenshotting the SVG in headless Edge at each size.
 
 ## Environment variables

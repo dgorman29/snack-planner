@@ -2,6 +2,9 @@
 
 Newest first. Add an entry for every user-visible or infrastructure change.
 
+## 2026-11-13
+- Theme picker in the Household panel with five light themes (Peach Jam, Mint Garden, Blueberry, Lemon, Lilac). Switching is instant and remembered per device in `localStorage` (`snackplan:theme:v1`). Palette colors are now CSS variables set from the new `src/themes.js`.
+
 ## 2026-11-11
 - Fixed the "Deploy Supabase functions" workflow failing without deploying: the latest Supabase CLI needs `--yes` to deploy from CI.
 - Renamed the app from Snack Planner to Morsel (manifest name, page title, sign-in screen) and replaced the placeholder cookie icons with a new plate-and-sprig icon (`public/icon.svg` plus re-rendered PNGs). The repo name and `/snack-planner/` URL path are unchanged, so installed copies keep working.
