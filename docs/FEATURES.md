@@ -23,7 +23,6 @@ Current behavior of the app. Update this file whenever a feature is added, chang
 - "Leave household" asks to confirm. The last member to leave deletes the household and all its data; the panel says so first. After leaving, the account is back at "Set up your household".
 - Any member can rename, invite, change sharing or leave. Only the creator can remove members. If the creator leaves, the longest-standing remaining member becomes the creator. "Our household" (made by the households migration) has its earliest account as creator.
 - **Share our library** (per household, off by default): lets other households see our recipes, including cook times and the full recipe, and copy them. Ratings, when we last made a recipe, plans, lists and history stay private.
-- **Show other households' libraries** (per person, off by default): adds Ours / Other households pills to the Library tab (see Library tab).
 
 ## Recipes: dinners and snacks
 - Every recipe lives in the Library. A recipe tagged **Weekday dinner** is a dinner; every other recipe is a snack.
@@ -91,7 +90,7 @@ Current behavior of the app. Update this file whenever a feature is added, chang
 - Cooked or prepped cards have a "Leftovers in the fridge" box under the rating buttons. It starts ticked for dinners and Weekend batch snacks and unticked for other snacks; ticking or unticking it puts the leftovers in or takes them out of the Fridge tab. Once they've been eaten or tossed, the card says so, with "Put back" to undo a mistaken tap.
 
 ## Library tab
-- New households start with an empty library (no built-in recipes); an empty library says how to add one. Search by title, vegetable or ingredient. Filter pills: All, Weekday dinner, Snacks. Delete recipes.
+- New households start with an empty library (no built-in recipes); an empty library says how to add one. Search by title, vegetable, ingredient or the household a recipe came from (our own household name matches our own recipes; a copy matches the household it was copied from). Filter pills, all off by default so everything shows: Weekday dinner and Snacks each narrow the list to that kind (both on is the same as both off), and Other households mixes in shared recipes (see below). The pills start off each time the tab opens. Delete recipes.
 - Tap a recipe to expand it: shows the description (steps), ingredients and recipe link.
 - "Edit" (shown when a recipe is expanded) changes its name, recipe link, snack timing, description, full recipe, time to prepare in minutes, and ingredients (one per line, e.g. "2 tbsp olive oil"; unchanged lines keep their shopping-list section, new ones are sorted by Claude, see List tab). Changes show on the Week tab and shopping list too; past weeks in History keep the name the recipe had then.
 - Add from a photo: "From a photo" on the Add a recipe sheet takes up to 4 photos (camera or gallery) of a cookbook page, recipe card or handwritten note. Photos are shrunk on the phone, then Claude transcribes the recipe with its quantities. The same "Weekday dinner" pill applies.
@@ -105,9 +104,9 @@ Current behavior of the app. Update this file whenever a feature is added, chang
 - "Add to this week" on a snack selects it for the current week (it appears on the Snacks view and feeds the shopping list). On a dinner the button reads "Add to a day" and asks which day. Tap "In this week" to take either back out (a dinner also leaves its day). A new set of snack suggestions replaces the Snacks cards but a pinned snack stays selected and on the list and log.
 
 ### Other households
-- Shown when "Show other households' libraries" is on. "Other households" lists the libraries of every household sharing theirs, grouped by household name and read fresh each time the view opens, so edits they make show up. Search and the All / Weekday dinner / Snacks pills apply.
-- Cards show the vegetable, Weekday dinner tag, snack timing and their cook time (their average of timed sessions, or their estimate). Expanded, they show the description, ingredients, full recipe steps and link.
-- "Copy to our library" saves our own copy; the button then reads "In our library". A copy never changes when theirs does. It starts with no ratings and no timed sessions of its own; their cook time becomes its estimate until we time it ourselves.
+- The "Other households" pill adds every sharing household's recipes to the list, after ours, in one list rather than a section per household. They're read fresh each time the pill is turned on, so edits they make show up. Search and the Weekday dinner / Snacks pills apply to them too. A recipe we've already copied isn't listed again; our copy shows instead.
+- Their cards say "From <household name>" and show the vegetable, Weekday dinner tag, snack timing and their cook time (their average of timed sessions, or their estimate). Expanded, they show the description, ingredients, full recipe steps and link.
+- "Copy to our library" saves our own copy, which replaces their card in the list. Our copy's card keeps the "From <household name>" credit. A copy never changes when theirs does. It starts with no ratings and no timed sessions of its own; their cook time becomes its estimate until we time it ourselves.
 
 ## History tab
 - Exposure meter per vegetable, out to 10 tries, with a "warming up" flag when recent ratings improve.
