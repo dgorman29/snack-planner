@@ -62,6 +62,7 @@ Current behavior of the app. Update this file whenever a feature is added, chang
 
 ### Cooking
 - "Start Cooking" (Tonight card and selected snack cards) or "Cook Now" (any Library card) opens a full-screen cooking view: a running timer, the ingredients at the top, then the full method as numbered steps. Recipe cards only show a short summary; this view shows the whole recipe.
+- Above the ingredients, **1× / 2× / 3×** buttons multiply every ingredient quantity for a double or triple batch (starts at 1× each time the view opens). Only the ingredient list changes: amounts written in the method steps, the shopping list and the saved recipe stay as they are.
 - The only ways out are **Finished** and **Cook Later**. Finished marks the recipe cooked (prepped, for snacks) and records the time since Start Cooking as one cook time. Cook Later closes the view and forgets the start time, so only uninterrupted start-to-finish sessions are timed.
 - Once a recipe has cook times, the time shown for it everywhere (Tonight card, dinner tiles, snack cards, dinner picker, Library) is the average of all its cook times, rounded to whole minutes (minimum 1). Until then it shows the estimate entered or imported. The Edit form says when the average is in use; its "Time to prepare" field stays as the estimate.
 - The session is remembered on the device that started it, so reloading the page mid-cook returns to the cooking view with the timer still running. A session older than 12 hours is dropped as abandoned. Other devices don't see it.
