@@ -754,6 +754,25 @@ function Empty({ icon: Icon, children, action }) {
 
 /* ------------------------------------------------------------------- app */
 
+// One record per week id. Rating a recipe records its week straight away (see
+// logVerdict), so archiving that week at rollover, or archiving it twice when two
+// devices roll over at once, must merge into the existing record, not add another.
+// Entries already recorded win; archived entries only fill in the missing ones.
+function mergeWeeks(wks) {
+  const out = [];
+  const byId = new Map();
+  for (const w of wks) {
+    const prev = byId.get(w.id);
+    if (!prev) { const copy = { ...w, entries: [...(w.entries || [])] }; byId.set(w.id, copy); out.push(copy); continue; }
+    for (const e of w.entries || []) {
+      const i = prev.entries.findIndex((x) => x.snackId === e.snackId);
+      if (i === -1) prev.entries.push(e);
+      else if (!prev.entries[i].verdict && e.verdict) prev.entries[i] = e;
+    }
+  }
+  return out;
+}
+
 const emptyWeek = (id) => ({
   id,
   suggestions: [],
@@ -833,7 +852,9 @@ function SnackPlannerApp({ household, userId, onHouseholdChange, onSignOut }) {
       // Libraries saved before households lived inside the core blob.
       const savedLib = Array.isArray(storedLib) ? storedLib : core?.library;
       let lib = savedLib || []; // new households start with an empty library
-      let wks = core?.weeks || [];
+      const savedWeeks = core?.weeks || [];
+      let wks = mergeWeeks(savedWeeks);
+      if (wks.length !== savedWeeks.length) firstRun.current = false; // save the cleaned-up history
       const thisWeekId = weekStartOf();
       let cur = storedWeek && storedWeek.id === thisWeekId ? { ...emptyWeek(thisWeekId), ...storedWeek } : null;
 
@@ -847,7 +868,7 @@ function SnackPlannerApp({ household, userId, onHouseholdChange, onSignOut }) {
           } : null;
         }).filter(Boolean);
         if (entries.length || (storedWeek.selected || []).length) {
-          wks = [...wks, { id: storedWeek.id, entries }];
+          wks = mergeWeeks([...wks, { id: storedWeek.id, entries }]);
           firstRun.current = false; // the archived week is new, so save it straight away
         }
         cur = null;

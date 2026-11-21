@@ -3,6 +3,7 @@
 Newest first. Add an entry for every user-visible or infrastructure change.
 
 ## 2026-11-21
+- Fixed past weeks showing twice on the History tab. Rating a recipe already recorded its week, and the Monday rollover then added it again. Weeks are now merged by date, and existing duplicates are folded together (and saved) the next time the app loads.
 - New households start with an empty library instead of 14 built-in snacks, and deleting every recipe no longer brings the built-in ones back on the next load. Existing libraries are unchanged.
 
 ## 2026-11-13
