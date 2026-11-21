@@ -47,10 +47,11 @@ Six keys, each a JSON blob in `household_data` for the household (originally `wi
 - `snackplan:pantry:v1`: ingredients always on hand
 - `snackplan:fridge:v1`: `{ items, gone }`. `items` are leftovers in the fridge: `{ id, recipeId, weekId, title, vegetable, dinner, cookedAt }`. The title is copied, so an entry outlives renames, deletes and the Monday rollover. `gone` holds eaten/tossed entries (newest first, capped at 200) with `outcome` (`eaten` or `tossed`) and `goneAt`, kept for future waste stats. An effect keeps this week's entries in step with the week: an entry whose recipe is no longer in `prepped` is dropped, and `cookedAt` follows `week.cooked`. Ages and colors (48 h yellow, 72 h red) are worked out at render from a `now` that ticks every 5 minutes.
 
-Three more keys live in the browser's `localStorage`, not Supabase, all per device on purpose:
+Four more keys live in the browser's `localStorage`, not Supabase, all per device on purpose:
 - `snackplan:cooking:v1`: the in-progress cooking session `{ id, startedAt }`, removed on Finished or Cook Later.
 - `snackplan:listview:v1`: the shopping list filters `{ show: ["this", "next"], hideBought }`.
 - `snackplan:theme:v1`: the chosen color theme id (`peach`, `mint`, `blueberry`, `lemon`, `lilac`).
+- `snackplan:awake:v1`: `"off"` when "Keep screen on while cooking" is turned off (anything else, or missing, means on). `CookingScreen` holds a Screen Wake Lock through `useWakeLock`, taking it again on `visibilitychange` because the browser drops it whenever the page is hidden.
 
 Users sign in with Supabase Auth email/password. Sign-up is controlled in the dashboard (Authentication > Sign In / Providers > "Allow new users to sign up"; keep "Confirm email" on). The sign-up form sends `emailRedirectTo` as the site's own URL, so that URL must be in Authentication > URL Configuration (Site URL or Redirect URLs). The old `kv_store` table is kept as a backup from before households, but 0003 dropped its policies so the app can't reach it; drop it in a later migration once nothing needs it.
 
@@ -65,7 +66,8 @@ Migration 0003 put every existing account into one household named "Our househol
 
 ## PWA install
 - The app is called Morsel (manifest `name`/`short_name`, `index.html` title, sign-in screen). The repo, folder and `/snack-planner/` path keep the old name on purpose, because the path is the installed app's identity.
-- `snack-planner/public/manifest.webmanifest` plus `icon-192.png`, `icon-512.png`, `apple-touch-icon.png`, linked from `index.html` via `%BASE_URL%`. No service worker. `icon.svg` is the source artwork (also the browser-tab icon and the sign-in screen mark).
+- `snack-planner/public/manifest.webmanifest` plus `icon-192.png`, `icon-512.png`, `apple-touch-icon.png`, linked from `index.html` via `%BASE_URL%`. No service worker.
+- Update check (`src/updateCheck.js`, started from `main.jsx`): an installed app resumes instead of reloading, so it would keep running an old build. Each build gets an id (`vite.config.js`), baked into the bundle as `__BUILD_ID__` and written to `dist/version.json`. When the app comes back to the front (at most once a minute), it fetches `version.json` uncached and, if the id differs, refreshes the cached `index.html` and reloads. It skips the reload while a dialog has a text field (a recipe being added or edited) and tries again next time. Production builds only. `icon.svg` is the source artwork (also the browser-tab icon and the sign-in screen mark).
 - The manifest `id`, `start_url` and `scope` are all `/snack-planner/`. Chrome identifies installed apps by these, and other apps on the same `github.io` origin would otherwise be mistaken for this one. Keep them in sync with the Vite `base`.
 - `theme_color` and `background_color` are the blush page color `#FFF0EA`; keep them in sync with the Peach Jam `blush` in `src/themes.js`. The installed app's splash screen always uses this color; the browser bar follows the chosen theme.
 - The PNG icons are rendered from `icon.svg` (full-bleed blush square, plate and sprig inside the central 80% so Android can mask it). To change the look, edit `icon.svg` and re-render the three PNGs at 192, 512 and 180 px, for example by screenshotting the SVG in headless Edge at each size.

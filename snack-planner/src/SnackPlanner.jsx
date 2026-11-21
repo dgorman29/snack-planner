@@ -220,6 +220,47 @@ function cookMinutes(snack) {
 }
 
 /* ----------------------------------------------------------- cooking session */
+
+// "Keep screen on while cooking" (Household panel). A per-device preference,
+// on unless turned off.
+const KEY_AWAKE = "snackplan:awake:v1";
+const canWakeLock = typeof navigator !== "undefined" && "wakeLock" in navigator;
+
+function loadAwake() {
+  try { return localStorage.getItem(KEY_AWAKE) !== "off"; } catch { return true; }
+}
+
+function saveAwake(on) {
+  try { localStorage.setItem(KEY_AWAKE, on ? "on" : "off"); } catch {}
+}
+
+// Hold a screen wake lock while `enabled`. The browser drops the lock whenever
+// the page is hidden, so take it again each time the app comes back.
+function useWakeLock(enabled) {
+  useEffect(() => {
+    if (!enabled || !canWakeLock) return undefined;
+    let lock = null;
+    let done = false;
+    async function take() {
+      if (done || document.visibilityState !== "visible" || (lock && !lock.released)) return;
+      try {
+        const l = await navigator.wakeLock.request("screen");
+        if (done) l.release().catch(() => {});
+        else lock = l;
+      } catch {
+        // Refused (low battery mode, unsupported in this context): the screen just sleeps as usual.
+      }
+    }
+    take();
+    document.addEventListener("visibilitychange", take);
+    return () => {
+      done = true;
+      document.removeEventListener("visibilitychange", take);
+      lock?.release().catch(() => {});
+    };
+  }, [enabled]);
+}
+
 /* A session lives on this device only (not in the shared week data), so it can
    survive a reload mid-cook without showing up on someone else's phone. */
 
@@ -1965,6 +2006,8 @@ function CookingScreen({ snack, startedAt, onFinish, onLater, onSaveMethod }) {
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState(null);
   const [scale, setScale] = useState(1); // 1x, 2x or 3x the ingredient quantities
+  const [awake] = useState(loadAwake);
+  useWakeLock(awake);
 
   useEffect(() => {
     const t = setInterval(() => setNow(Date.now()), 1000);
@@ -3329,6 +3372,22 @@ function HouseholdToggle({ on, onClick, busy, disabled, title, children }) {
   );
 }
 
+// Whether the cooking screen keeps the display awake. This device only.
+function KeepAwakeToggle() {
+  const [on, setOn] = useState(loadAwake);
+  const toggle = () => { saveAwake(!on); setOn(!on); };
+  return (
+    <>
+      <h3 className="text-xs font-extrabold mt-5">This device</h3>
+      <HouseholdToggle on={on} onClick={toggle} title="Keep screen on while cooking">
+        {canWakeLock
+          ? "Stops the screen dimming or locking while the cooking screen is open."
+          : "This browser can't keep the screen on, so the screen will sleep as usual."}
+      </HouseholdToggle>
+    </>
+  );
+}
+
 // Colour theme for this device only. Applies instantly; see themes.js.
 function ThemePicker() {
   const [theme, setTheme] = useState(loadTheme);
@@ -3480,6 +3539,7 @@ function HouseholdPanel({ household, userId, onChange, onSignOut, flash }) {
         Mixes recipes from households that share theirs into the Library tab, with an "Other households" filter. Just for you.
       </HouseholdToggle>
 
+      <KeepAwakeToggle />
       <ThemePicker />
 
       {error && (
