@@ -3,6 +3,7 @@
 Newest first. Add an entry for every user-visible or infrastructure change.
 
 ## 2026-11-21
+- The cooking view keeps the screen on (Screen Wake Lock API, re-taken when the app comes back to the front). New "Keep screen on while cooking" switch in the Household panel, on by default, per device in `snackplan:awake:v1`.
 - The installed app picks up new deploys: when it comes back to the front, it checks a `version.json` written by each build and reloads if a newer version is live (not while a recipe form is open). Fixes the Home Screen app on iPad staying on an old version.
 - Cooking view: 1× / 2× / 3× buttons above the ingredients scale their quantities for a double or triple batch. The method text, shopping list and saved recipe are unchanged.
 - "Show other households' libraries" is back in the Household panel. With it on, the Library tab lists other households' shared recipes alongside ours by default, and the "Other households" pill narrows the list to just theirs (copied ones say "In our library"). With it off, the pill is hidden and only our recipes show.
