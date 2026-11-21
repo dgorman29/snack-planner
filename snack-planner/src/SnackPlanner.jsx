@@ -191,113 +191,12 @@ function vegColor(name) {
   return VEG_PALETTE[h % VEG_PALETTE.length];
 }
 
-/* ---------------------------------------------------------------- seeding */
+/* ---------------------------------------------------------------- recipes */
 
 let seq = 0;
 const newId = () => `s${Date.now().toString(36)}${(seq++).toString(36)}${Math.floor(Math.random() * 1296).toString(36)}`;
 
 const ing = (name, qty, unit, section) => ({ name, qty, unit: unit || "", section: section || "other" });
-
-function mkSnack(title, vegetable, tier, prepMinutes, ingredients, steps, extra = {}) {
-  return {
-    id: newId(), title, vegetable, tier, prepMinutes, ingredients, steps,
-    source: "seed", url: "", ratings: [], lastMadeWeek: null, ...extra,
-  };
-}
-
-function seedLibrary() {
-  return [
-    mkSnack("Cucumber coins with whipped cottage cheese", "cucumber", "assembly", 5, [
-      ing("English cucumber", 1, "", "produce"),
-      ing("cottage cheese", 1, "cup", "dairy"),
-      ing("lemon", 0.5, "", "produce"),
-      ing("fresh dill", 1, "tbsp", "produce"),
-    ], "Blend cottage cheese with lemon and dill until smooth. Slice cucumber into thin half-moons for scooping."),
-
-    mkSnack("Roasted sweet potato wedges", "sweet potato", "batch", 40, [
-      ing("sweet potato", 3, "", "produce"),
-      ing("olive oil", 2, "tbsp", "pantry"),
-      ing("cinnamon", 0.5, "tsp", "pantry"),
-    ], "Cut into finger-length wedges, toss with oil and cinnamon, roast at 425°F for 30 min. Keeps 4 days, good cold in the car."),
-
-    mkSnack("Zucchini oat mini muffins", "zucchini", "batch", 35, [
-      ing("zucchini", 2, "", "produce"),
-      ing("rolled oats", 2, "cup", "pantry"),
-      ing("eggs", 2, "", "dairy"),
-      ing("plain yogurt", 0.5, "cup", "dairy"),
-      ing("maple syrup", 3, "tbsp", "pantry"),
-      ing("baking powder", 1, "tsp", "pantry"),
-    ], "Blend oats to flour, fold in grated zucchini, bake in a mini tin at 350°F for 16 min. Freezes well."),
-
-    mkSnack("Broccoli trees with yogurt ranch", "broccoli", "assembly", 8, [
-      ing("broccoli crown", 1, "", "produce"),
-      ing("plain whole-milk yogurt", 0.5, "cup", "dairy"),
-      ing("garlic powder", 0.25, "tsp", "pantry"),
-      ing("chives", 1, "tbsp", "produce"),
-    ], "Steam florets 4 minutes so they squash easily, cool, serve with stirred-together yogurt dip."),
-
-    mkSnack("Pea and cheese scoop cups", "peas", "grab", 2, [
-      ing("frozen petite peas", 2, "cup", "frozen"),
-      ing("mild cheddar", 4, "oz", "dairy"),
-    ], "Thaw peas under warm water. Shred cheddar over the top and serve in a lidded cup."),
-
-    mkSnack("Butternut and apple mash cups", "butternut squash", "batch", 35, [
-      ing("butternut squash", 1, "", "produce"),
-      ing("apple", 2, "", "produce"),
-      ing("cinnamon", 0.5, "tsp", "pantry"),
-    ], "Roast cubed squash and apple 25 min, mash, portion into small cups. Travels well."),
-
-    mkSnack("Red pepper strips with hummus", "bell pepper", "assembly", 3, [
-      ing("red bell pepper", 2, "", "produce"),
-      ing("hummus", 1, "cup", "pantry"),
-    ], "Slice pepper into thin strips she can hold. Hummus in a small dipping cup."),
-
-    mkSnack("Spinach and banana silver-dollar pancakes", "spinach", "batch", 30, [
-      ing("baby spinach", 3, "cup", "produce"),
-      ing("banana", 2, "", "produce"),
-      ing("eggs", 2, "", "dairy"),
-      ing("rolled oats", 1.5, "cup", "pantry"),
-      ing("milk", 0.5, "cup", "dairy"),
-    ], "Blend everything, cook silver-dollar rounds, freeze flat with parchment between. Reheat 20 seconds."),
-
-    mkSnack("Roasted cauliflower bites", "cauliflower", "batch", 30, [
-      ing("cauliflower", 1, "head", "produce"),
-      ing("olive oil", 2, "tbsp", "pantry"),
-      ing("parmesan", 0.25, "cup", "dairy"),
-    ], "Small florets, oil, roast at 425°F for 22 min until the edges brown. Dust with parmesan while hot."),
-
-    mkSnack("Avocado white bean smash on toast fingers", "avocado", "assembly", 5, [
-      ing("avocado", 1, "", "produce"),
-      ing("cannellini beans", 1, "can", "pantry"),
-      ing("soft sandwich bread", 2, "slice", "pantry"),
-      ing("lemon", 0.5, "", "produce"),
-    ], "Mash avocado and drained beans with lemon, spread thin on toast, cut into finger strips."),
-
-    mkSnack("Soft-steamed carrot sticks", "carrot", "batch", 15, [
-      ing("carrots", 6, "", "produce"),
-      ing("butter", 1, "tbsp", "dairy"),
-    ], "Cut into finger-length sticks, steam 10–12 min until they squash between your fingers. Toss with butter."),
-
-    mkSnack("Corn and zucchini mini fritters", "corn", "batch", 30, [
-      ing("frozen corn", 1.5, "cup", "frozen"),
-      ing("zucchini", 1, "", "produce"),
-      ing("eggs", 2, "", "dairy"),
-      ing("flour", 0.5, "cup", "pantry"),
-    ], "Squeeze the grated zucchini dry, mix, pan-fry small rounds 2 min a side. Freezes well."),
-
-    mkSnack("Smashed edamame cups", "edamame", "grab", 2, [
-      ing("shelled edamame", 2, "cup", "frozen"),
-      ing("sesame oil", 1, "tsp", "pantry"),
-    ], "Thaw and smash each bean lightly with a fork so nothing stays whole and round. Drizzle sesame oil."),
-
-    mkSnack("Pink beet yogurt dip with pita fingers", "beet", "batch", 30, [
-      ing("beets", 2, "", "produce"),
-      ing("plain whole-milk yogurt", 1, "cup", "dairy"),
-      ing("pita bread", 2, "", "pantry"),
-      ing("lemon", 0.5, "", "produce"),
-    ], "Roast beets until soft, blend with yogurt and lemon. Cut warm pita into soft strips."),
-  ];
-}
 
 /* ------------------------------------------------------------ snack stats */
 
@@ -933,7 +832,7 @@ function SnackPlannerApp({ household, userId, onHouseholdChange, onSignOut }) {
 
       // Libraries saved before households lived inside the core blob.
       const savedLib = Array.isArray(storedLib) ? storedLib : core?.library;
-      let lib = savedLib?.length ? savedLib : seedLibrary();
+      let lib = savedLib || []; // new households start with an empty library
       let wks = core?.weeks || [];
       const thisWeekId = weekStartOf();
       let cur = storedWeek && storedWeek.id === thisWeekId ? { ...emptyWeek(thisWeekId), ...storedWeek } : null;
@@ -2619,7 +2518,9 @@ function LibraryView({ library, onAdd, onRemove, onUpdate, week, isNext, selecte
       )}
 
       {!filtered.length && (
-        <Empty icon={BookMarked}>Nothing matches that. Try a vegetable name or switch the filter.</Empty>
+        <Empty icon={BookMarked}>{library.length
+          ? "Nothing matches that. Try a vegetable name or switch the filter."
+          : "No recipes yet. Add one above, from a link, a photo or by hand."}</Empty>
       )}
 
       <div className="space-y-3">

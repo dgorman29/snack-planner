@@ -91,7 +91,7 @@ Current behavior of the app. Update this file whenever a feature is added, chang
 - Cooked or prepped cards have a "Leftovers in the fridge" box under the rating buttons. It starts ticked for dinners and Weekend batch snacks and unticked for other snacks; ticking or unticking it puts the leftovers in or takes them out of the Fridge tab. Once they've been eaten or tossed, the card says so, with "Put back" to undo a mistaken tap.
 
 ## Library tab
-- 14 seeded snacks (no seeded dinners). Search by title, vegetable or ingredient. Filter pills: All, Weekday dinner, Snacks. Delete recipes.
+- New households start with an empty library (no built-in recipes); an empty library says how to add one. Search by title, vegetable or ingredient. Filter pills: All, Weekday dinner, Snacks. Delete recipes.
 - Tap a recipe to expand it: shows the description (steps), ingredients and recipe link.
 - "Edit" (shown when a recipe is expanded) changes its name, recipe link, snack timing, description, full recipe, time to prepare in minutes, and ingredients (one per line, e.g. "2 tbsp olive oil"; unchanged lines keep their shopping-list section, new ones are sorted by Claude, see List tab). Changes show on the Week tab and shopping list too; past weeks in History keep the name the recipe had then.
 - Add from a photo: "From a photo" on the Add a recipe sheet takes up to 4 photos (camera or gallery) of a cookbook page, recipe card or handwritten note. Photos are shrunk on the phone, then Claude transcribes the recipe with its quantities. The same "Weekday dinner" pill applies.
