@@ -111,7 +111,7 @@ Current behavior of the app. Update this file whenever a feature is added, chang
 
 ## History tab
 - Exposure meter per vegetable, out to 10 tries, with a "warming up" flag when recent ratings improve.
-- Past weeks with each verdict. Weeks roll over automatically on Monday: next week's plan (if any) becomes the current week, otherwise it starts empty.
+- Past weeks with each verdict. Weeks roll over automatically on Monday: next week's plan (if any) becomes the current week, otherwise it starts empty. Each week appears once: a week with ratings is listed as soon as the first rating is logged, and the rollover adds anything else to that same entry.
 
 ## AI limits
 - AI features only work for accounts in a household.
