@@ -19,7 +19,7 @@ Browser (GitHub Pages)
 | Table | Holds |
 |---|---|
 | `households` | `id`, `name`, `share_library` (off by default), `created_by` (the only member who can remove others; passes to the longest-standing member if they leave) |
-| `household_members` | One row per login (`user_id` is the primary key, so one household each): `household_id`, `email` (copied at join time for the member list), `show_shared` (no longer used: it was a per-person "Show other households' libraries" switch, replaced by the Library tab's Other households pill, which starts off each visit) |
+| `household_members` | One row per login (`user_id` is the primary key, so one household each): `household_id`, `email` (copied at join time for the member list), `show_shared` (this person's "Show other households' libraries" switch: on mixes shared recipes into the Library tab and shows its Other households pill) |
 | `household_invites` | `code` (8 uppercase hex characters), `household_id`, `expires_at` (7 days). Reusable until it expires |
 | `household_data` | The app's JSON blobs, primary key `(household_id, key)` |
 | `profiles` | One row per account, made by the `on_auth_user_created` trigger on `auth.users`: `email`, `approved` (default false; migration 0004 approved every account that existed then). Members can read only their own row; approve by editing the row in the Table Editor |
@@ -33,7 +33,7 @@ Row-level security: members can read their household and its member list, and re
 - `claim_ai_call(call_kind)`: see AI proxy below.
 - `create_household_invite()`: new code for the caller's household; also clears expired codes.
 - `leave_household()`: removes the caller; the last member out deletes the household (its data cascades).
-- `set_show_shared(show)`: no longer called by the app (see `show_shared`).
+- `set_show_shared(show)`.
 - `shared_libraries()`: `(household_id, household_name, recipes)` for every other household with `share_library` on. Each recipe has `ratings` and `lastMadeWeek` removed. This is the only way to read another household's data.
 
 The frontend (`SnackPlanner` at the bottom of `SnackPlanner.jsx`) loads the session, then the household (`loadHousehold`), then mounts `SnackPlannerApp` keyed by household id. No household shows `HouseholdSetup`. The Household panel calls `onHouseholdChange` after each change to reload it.

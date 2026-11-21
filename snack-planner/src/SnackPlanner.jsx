@@ -1425,7 +1425,7 @@ function SnackPlannerApp({ household, userId, onHouseholdChange, onSignOut }) {
             library={library} onAdd={addToLibrary} onRemove={removeFromLibrary} onUpdate={updateLibrarySnack}
             week={plan} isNext={isNext} selectedIds={plan.selected} onToggleInWeek={toggleInWeek} onToggleTag={toggleLibraryTag}
             onAssignDinner={assignDinner} onCookNow={startCooking}
-            householdName={household.name}
+            householdName={household.name} showShared={household.show_shared}
             busy={busy} setBusy={setBusy} flash={flash}
           />
         )}
@@ -2438,12 +2438,14 @@ function FridgeView({ items, now, onClear }) {
 
 /* ----------------------------------------------------------- library view */
 
-function LibraryView({ library, onAdd, onRemove, onUpdate, week, isNext, selectedIds, onToggleInWeek, onToggleTag, onAssignDinner, onCookNow, householdName, busy, setBusy, flash }) {
+function LibraryView({ library, onAdd, onRemove, onUpdate, week, isNext, selectedIds, onToggleInWeek, onToggleTag, onAssignDinner, onCookNow, householdName, showShared, busy, setBusy, flash }) {
   const [q, setQ] = useState("");
   // Kind filters: none on shows everything; each one narrows to that kind.
   const [kinds, setKinds] = useState([]); // subset of ["dinner", "snack"]
-  const [withOthers, setWithOthers] = useState(false); // mix in other households' shared recipes
-  const shared = useSharedLibraries(withOthers);
+  // With "Show other households' libraries" on (Household panel), sharing households'
+  // recipes join ours; the Other households pill narrows the list to just theirs.
+  const [onlyOthers, setOnlyOthers] = useState(false);
+  const shared = useSharedLibraries(!!showShared);
   const [sheet, setSheet] = useState(null); // "url" | "manual"
   const [editing, setEditing] = useState(null); // snack being edited
   const [dayFor, setDayFor] = useState(null); // dinner waiting for a day
@@ -2462,16 +2464,18 @@ function LibraryView({ library, onAdd, onRemove, onUpdate, week, isNext, selecte
     const t = `${s.title} ${s.vegetable} ${(s.ingredients || []).map((i) => i.name).join(" ")} ${from || ""}`.toLowerCase();
     return t.includes(q.trim().toLowerCase());
   };
-  const filtered = library.filter((s) => matches(s, s.copiedFrom ? s.copiedFrom.householdName : householdName));
+  const filtered = showShared && onlyOthers ? []
+    : library.filter((s) => matches(s, s.copiedFrom ? s.copiedFrom.householdName : householdName));
 
-  // Other households' recipes, minus any we've already copied (our copy is listed instead).
+  // Other households' recipes. Mixed with ours, any we've already copied are left out
+  // (our copy is listed instead); on their own, they show as "In our library".
   const copied = new Set(library.map((s) => s.copiedFrom && `${s.copiedFrom.householdId}:${s.copiedFrom.id}`).filter(Boolean));
-  const sharedRecipes = withOthers && Array.isArray(shared)
+  const sharedRecipes = showShared && Array.isArray(shared)
     ? shared.flatMap((h) => (h.recipes || [])
-        .filter((s) => !copied.has(`${h.household_id}:${s.id}`) && matches(s, h.household_name))
-        .map((s) => ({ h, s })))
+        .map((s) => ({ h, s, copied: copied.has(`${h.household_id}:${s.id}`) }))
+        .filter(({ h, s, copied }) => (onlyOthers || !copied) && matches(s, h.household_name)))
     : [];
-  const sharedLoading = withOthers && shared === null;
+  const sharedLoading = showShared && shared === null;
 
   function copyShared(h, s) {
     const { cookTimes, ...rest } = s;
@@ -2544,7 +2548,7 @@ function LibraryView({ library, onAdd, onRemove, onUpdate, week, isNext, selecte
       <div className="flex flex-wrap gap-2 mb-4">
         <Pill compact active={kinds.includes("dinner")} onClick={() => toggleKind("dinner")}>Dinners</Pill>
         <Pill compact active={kinds.includes("snack")} onClick={() => toggleKind("snack")}>Snacks</Pill>
-        <Pill compact active={withOthers} onClick={() => setWithOthers((o) => !o)}>Other households</Pill>
+        {showShared && <Pill compact active={onlyOthers} onClick={() => setOnlyOthers((o) => !o)}>Other households</Pill>}
       </div>
 
       {isNext && (
@@ -2554,7 +2558,7 @@ function LibraryView({ library, onAdd, onRemove, onUpdate, week, isNext, selecte
       )}
 
       {!filtered.length && !sharedRecipes.length && !sharedLoading && (
-        <Empty icon={BookMarked}>{library.length || withOthers || q.trim()
+        <Empty icon={BookMarked}>{library.length || (showShared && onlyOthers) || q.trim()
           ? "Nothing matches that. Try a vegetable name or switch the filter."
           : "No recipes yet. Add one above, from a link, a photo or by hand."}</Empty>
       )}
@@ -2573,17 +2577,17 @@ function LibraryView({ library, onAdd, onRemove, onUpdate, week, isNext, selecte
             onRemove={() => onRemove(s.id)}
           />
         ))}
-        {sharedRecipes.map(({ h, s }) => (
+        {sharedRecipes.map(({ h, s, copied }) => (
           <SharedRecipeCard key={`${h.household_id}:${s.id}`} snack={s} householdName={h.household_name}
-                            onCopy={() => copyShared(h, s)} />
+                            copied={copied} onCopy={() => copyShared(h, s)} />
         ))}
       </div>
 
       {sharedLoading && <div className="flex justify-center py-6"><Loader2 className="animate-spin text-muted" size={22} /></div>}
-      {withOthers && shared === "failed" && (
+      {showShared && shared === "failed" && (
         <p className="mt-3 text-xs font-bold text-muted">Couldn't load other households' recipes. Try again in a bit.</p>
       )}
-      {withOthers && Array.isArray(shared) && !shared.length && (
+      {showShared && Array.isArray(shared) && !shared.length && (
         <p className="mt-3 text-xs font-bold text-muted">No other household is sharing its library yet.</p>
       )}
 
@@ -2691,7 +2695,7 @@ function useSharedLibraries(on) {
   return shared;
 }
 
-function SharedRecipeCard({ snack: s, householdName, onCopy }) {
+function SharedRecipeCard({ snack: s, householdName, copied, onCopy }) {
   const [open, setOpen] = useState(false);
   const method = String(s.method || "").split("\n").map((l) => l.trim()).filter(Boolean);
 
@@ -2744,8 +2748,10 @@ function SharedRecipeCard({ snack: s, householdName, onCopy }) {
       )}
 
       <div className="flex gap-2 mt-3">
-        <button onClick={onCopy} className="btn text-sm bg-white text-ink">
-          <Copy size={15} /> Copy to our library
+        <button onClick={onCopy} disabled={copied}
+                className={`btn text-sm ${copied ? "bg-berry text-white shadow-sticker-sm" : "bg-white text-ink"}`}>
+          {copied ? <><Check size={15} strokeWidth={3} /> In our library</>
+                  : <><Copy size={15} /> Copy to our library</>}
         </button>
       </div>
     </div>
@@ -3194,7 +3200,7 @@ function LoginForm() {
 
 async function loadHousehold(userId) {
   const { data: me, error } = await supabase.from("household_members")
-    .select("household_id").eq("user_id", userId).maybeSingle();
+    .select("household_id, show_shared").eq("user_id", userId).maybeSingle();
   if (error) throw error;
   if (!me) return null;
   const [{ data: h, error: hErr }, { data: members, error: mErr }] = await Promise.all([
@@ -3202,7 +3208,7 @@ async function loadHousehold(userId) {
     supabase.from("household_members").select("user_id, email").eq("household_id", me.household_id).order("joined_at"),
   ]);
   if (hErr || mErr) throw hErr || mErr;
-  return { ...h, members: members || [] };
+  return { ...h, show_shared: me.show_shared, members: members || [] };
 }
 
 // Database errors raised by the household functions are written for people.
@@ -3362,6 +3368,10 @@ function HouseholdPanel({ household, userId, onChange, onSignOut, flash }) {
     }
   }
 
+  async function toggleShowShared() {
+    if (await act("show", () => supabase.rpc("set_show_shared", { show: !household.show_shared }))) onChange();
+  }
+
   async function toggleShare() {
     const on = !household.share_library;
     if (await act("share", () => supabase.rpc("update_household", { share: on }))) onChange();
@@ -3443,6 +3453,9 @@ function HouseholdPanel({ household, userId, onChange, onSignOut, flash }) {
       <h3 className="text-xs font-extrabold mt-5">Sharing</h3>
       <HouseholdToggle on={household.share_library} onClick={toggleShare} busy={busy === "share"} disabled={!!busy} title="Share our library">
         Other households can see our recipes and cook times and copy them. Our ratings and plans stay private.
+      </HouseholdToggle>
+      <HouseholdToggle on={household.show_shared} onClick={toggleShowShared} busy={busy === "show"} disabled={!!busy} title="Show other households' libraries">
+        Mixes recipes from households that share theirs into the Library tab, with an "Other households" filter. Just for you.
       </HouseholdToggle>
 
       <ThemePicker />
