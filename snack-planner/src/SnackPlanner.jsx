@@ -1425,7 +1425,7 @@ function SnackPlannerApp({ household, userId, onHouseholdChange, onSignOut }) {
             library={library} onAdd={addToLibrary} onRemove={removeFromLibrary} onUpdate={updateLibrarySnack}
             week={plan} isNext={isNext} selectedIds={plan.selected} onToggleInWeek={toggleInWeek} onToggleTag={toggleLibraryTag}
             onAssignDinner={assignDinner} onCookNow={startCooking}
-            showShared={household.show_shared}
+            householdName={household.name}
             busy={busy} setBusy={setBusy} flash={flash}
           />
         )}
@@ -2438,11 +2438,12 @@ function FridgeView({ items, now, onClear }) {
 
 /* ----------------------------------------------------------- library view */
 
-function LibraryView({ library, onAdd, onRemove, onUpdate, week, isNext, selectedIds, onToggleInWeek, onToggleTag, onAssignDinner, onCookNow, showShared, busy, setBusy, flash }) {
+function LibraryView({ library, onAdd, onRemove, onUpdate, week, isNext, selectedIds, onToggleInWeek, onToggleTag, onAssignDinner, onCookNow, householdName, busy, setBusy, flash }) {
   const [q, setQ] = useState("");
-  const [kind, setKind] = useState("all"); // "all" | "dinner" | "snack"
-  const [source, setSource] = useState("ours"); // "ours" | "others" (other households' shared libraries)
-  const viewingShared = showShared && source === "others";
+  // Kind filters: none on shows everything; each one narrows to that kind.
+  const [kinds, setKinds] = useState([]); // subset of ["dinner", "snack"]
+  const [withOthers, setWithOthers] = useState(false); // mix in other households' shared recipes
+  const shared = useSharedLibraries(withOthers);
   const [sheet, setSheet] = useState(null); // "url" | "manual"
   const [editing, setEditing] = useState(null); // snack being edited
   const [dayFor, setDayFor] = useState(null); // dinner waiting for a day
@@ -2452,14 +2453,38 @@ function LibraryView({ library, onAdd, onRemove, onUpdate, week, isNext, selecte
   const photoInput = useRef(null);
   const importing = busy === "import" || busy === "photo";
 
-  const matches = (s) => {
-    if (kind === "dinner" && !hasTag(s, DINNER_TAG)) return false;
-    if (kind === "snack" && hasTag(s, DINNER_TAG)) return false;
+  const toggleKind = (k) => setKinds((ks) => (ks.includes(k) ? ks.filter((x) => x !== k) : [...ks, k]));
+  // Search covers the title, vegetable, ingredients and the household the recipe came from.
+  const matches = (s, from) => {
+    const dinner = hasTag(s, DINNER_TAG);
+    if (kinds.length && !kinds.includes(dinner ? "dinner" : "snack")) return false;
     if (!q.trim()) return true;
-    const t = `${s.title} ${s.vegetable} ${(s.ingredients || []).map((i) => i.name).join(" ")}`.toLowerCase();
-    return t.includes(q.toLowerCase());
+    const t = `${s.title} ${s.vegetable} ${(s.ingredients || []).map((i) => i.name).join(" ")} ${from || ""}`.toLowerCase();
+    return t.includes(q.trim().toLowerCase());
   };
-  const filtered = library.filter(matches);
+  const filtered = library.filter((s) => matches(s, s.copiedFrom ? s.copiedFrom.householdName : householdName));
+
+  // Other households' recipes, minus any we've already copied (our copy is listed instead).
+  const copied = new Set(library.map((s) => s.copiedFrom && `${s.copiedFrom.householdId}:${s.copiedFrom.id}`).filter(Boolean));
+  const sharedRecipes = withOthers && Array.isArray(shared)
+    ? shared.flatMap((h) => (h.recipes || [])
+        .filter((s) => !copied.has(`${h.household_id}:${s.id}`) && matches(s, h.household_name))
+        .map((s) => ({ h, s })))
+    : [];
+  const sharedLoading = withOthers && shared === null;
+
+  function copyShared(h, s) {
+    const { cookTimes, ...rest } = s;
+    onAdd({
+      ...rest,
+      id: newId(),
+      source: "shared",
+      copiedFrom: { householdId: h.household_id, householdName: h.household_name, id: s.id },
+      prepMinutes: cookMinutes(s) || s.prepMinutes || null, // their time becomes our estimate
+      ratings: [],
+      lastMadeWeek: null,
+    });
+  }
 
   async function doImport() {
     const link = url.trim();
@@ -2505,8 +2530,8 @@ function LibraryView({ library, onAdd, onRemove, onUpdate, week, isNext, selecte
       <div className="flex gap-2 mb-3">
         <div className="flex-1 min-w-0 flex items-center gap-2 bg-white border-2 border-ink rounded-2xl px-3.5 min-h-[48px]">
           <Search size={18} className="text-muted shrink-0" />
-          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search recipes or vegetables"
-                 aria-label="Search recipes or vegetables"
+          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Recipe, veg or household"
+                 aria-label="Search recipes, vegetables or household"
                  className="flex-1 min-w-0 py-2.5 text-[15px] font-bold outline-none bg-transparent" />
           {q && <button onClick={() => setQ("")} aria-label="Clear search" className="w-8 h-8 flex items-center justify-center text-muted"><X size={16} /></button>}
         </div>
@@ -2516,30 +2541,20 @@ function LibraryView({ library, onAdd, onRemove, onUpdate, week, isNext, selecte
         </button>
       </div>
 
-      {showShared && (
-        <div className="flex gap-2 mb-2">
-          <Pill active={!viewingShared} onClick={() => setSource("ours")}>Ours</Pill>
-          <Pill active={viewingShared} onClick={() => setSource("others")}>Other households</Pill>
-        </div>
-      )}
-
-      <div className="flex gap-2 mb-4">
-        {[["all", "All"], ["dinner", TAG_LABEL[DINNER_TAG]], ["snack", "Snacks"]].map(([id, label]) => (
-          <Pill key={id} active={kind === id} onClick={() => setKind(id)}>{label}</Pill>
-        ))}
+      <div className="flex flex-wrap gap-2 mb-4">
+        <Pill compact active={kinds.includes("dinner")} onClick={() => toggleKind("dinner")}>Dinners</Pill>
+        <Pill compact active={kinds.includes("snack")} onClick={() => toggleKind("snack")}>Snacks</Pill>
+        <Pill compact active={withOthers} onClick={() => setWithOthers((o) => !o)}>Other households</Pill>
       </div>
 
-      {viewingShared && <SharedLibraries library={library} matches={matches} onCopy={onAdd} />}
-
-      {!viewingShared && <>
       {isNext && (
         <p className="mb-3 text-xs font-bold text-muted">
           Adding to next week. Switch back to this week on the Week tab.
         </p>
       )}
 
-      {!filtered.length && (
-        <Empty icon={BookMarked}>{library.length
+      {!filtered.length && !sharedRecipes.length && !sharedLoading && (
+        <Empty icon={BookMarked}>{library.length || withOthers || q.trim()
           ? "Nothing matches that. Try a vegetable name or switch the filter."
           : "No recipes yet. Add one above, from a link, a photo or by hand."}</Empty>
       )}
@@ -2558,8 +2573,19 @@ function LibraryView({ library, onAdd, onRemove, onUpdate, week, isNext, selecte
             onRemove={() => onRemove(s.id)}
           />
         ))}
+        {sharedRecipes.map(({ h, s }) => (
+          <SharedRecipeCard key={`${h.household_id}:${s.id}`} snack={s} householdName={h.household_name}
+                            onCopy={() => copyShared(h, s)} />
+        ))}
       </div>
-      </>}
+
+      {sharedLoading && <div className="flex justify-center py-6"><Loader2 className="animate-spin text-muted" size={22} /></div>}
+      {withOthers && shared === "failed" && (
+        <p className="mt-3 text-xs font-bold text-muted">Couldn't load other households' recipes. Try again in a bit.</p>
+      )}
+      {withOthers && Array.isArray(shared) && !shared.length && (
+        <p className="mt-3 text-xs font-bold text-muted">No other household is sharing its library yet.</p>
+      )}
 
       <Sheet open={!!dayFor} onClose={() => setDayFor(null)} title={isNext ? "Which day next week?" : "Which day?"}>
         {dayFor && (
@@ -2647,68 +2673,25 @@ function LibraryView({ library, onAdd, onRemove, onUpdate, week, isNext, selecte
 /* Other households' libraries, read live each time this view opens. Recipes can
    only be copied: a copy is ours to edit, rate and time, and starts with no
    ratings or cook times of its own. */
-function SharedLibraries({ library, matches, onCopy }) {
-  const [shared, setShared] = useState(null); // [{ household_id, household_name, recipes }]
-  const [failed, setFailed] = useState(false);
-
+// Other households' shared libraries, fetched each time the toggle is turned on.
+// null while loading, "failed", or [{ household_id, household_name, recipes }].
+function useSharedLibraries(on) {
+  const [shared, setShared] = useState(null);
   useEffect(() => {
+    if (!on) return;
     let cancelled = false;
+    setShared(null);
     supabase.rpc("shared_libraries").then(({ data, error }) => {
       if (cancelled) return;
-      if (error) { console.error("shared_libraries failed", error); setFailed(true); return; }
+      if (error) { console.error("shared_libraries failed", error); setShared("failed"); return; }
       setShared(data || []);
     });
     return () => { cancelled = true; };
-  }, []);
-
-  if (failed) return <Empty icon={BookMarked}>Couldn't load other households' libraries. Try again in a bit.</Empty>;
-  if (!shared) {
-    return <div className="flex justify-center py-8"><Loader2 className="animate-spin text-muted" size={22} /></div>;
-  }
-  if (!shared.length) {
-    return <Empty icon={BookMarked}>No other household is sharing its library yet.</Empty>;
-  }
-
-  const copied = new Set(library.map((s) => s.copiedFrom && `${s.copiedFrom.householdId}:${s.copiedFrom.id}`).filter(Boolean));
-
-  function copy(h, s) {
-    const { cookTimes, ...rest } = s;
-    onCopy({
-      ...rest,
-      id: newId(),
-      source: "shared",
-      copiedFrom: { householdId: h.household_id, householdName: h.household_name, id: s.id },
-      prepMinutes: cookMinutes(s) || s.prepMinutes || null, // their time becomes our estimate
-      ratings: [],
-      lastMadeWeek: null,
-    });
-  }
-
-  const groups = shared
-    .map((h) => ({ ...h, recipes: (h.recipes || []).filter(matches) }))
-    .filter((h) => h.recipes.length);
-
-  if (!groups.length) return <Empty icon={BookMarked}>Nothing matches that. Try a vegetable name or switch the filter.</Empty>;
-
-  return (
-    <div className="space-y-5">
-      {groups.map((h) => (
-        <section key={h.household_id}>
-          <h2 className="font-display text-lg font-semibold mb-2">{h.household_name}</h2>
-          <div className="space-y-3">
-            {h.recipes.map((s) => (
-              <SharedRecipeCard key={s.id} snack={s}
-                                copied={copied.has(`${h.household_id}:${s.id}`)}
-                                onCopy={() => copy(h, s)} />
-            ))}
-          </div>
-        </section>
-      ))}
-    </div>
-  );
+  }, [on]);
+  return shared;
 }
 
-function SharedRecipeCard({ snack: s, copied, onCopy }) {
+function SharedRecipeCard({ snack: s, householdName, onCopy }) {
   const [open, setOpen] = useState(false);
   const method = String(s.method || "").split("\n").map((l) => l.trim()).filter(Boolean);
 
@@ -2731,6 +2714,7 @@ function SharedRecipeCard({ snack: s, copied, onCopy }) {
             </>
           )}
         </div>
+        <p className="text-xs font-bold text-muted mt-1">From {householdName}</p>
       </button>
 
       {open && (
@@ -2760,10 +2744,8 @@ function SharedRecipeCard({ snack: s, copied, onCopy }) {
       )}
 
       <div className="flex gap-2 mt-3">
-        <button onClick={onCopy} disabled={copied}
-                className={`btn text-sm ${copied ? "bg-berry text-white shadow-sticker-sm" : "bg-white text-ink"}`}>
-          {copied ? <><Check size={15} strokeWidth={3} /> In our library</>
-                  : <><Copy size={15} /> Copy to our library</>}
+        <button onClick={onCopy} className="btn text-sm bg-white text-ink">
+          <Copy size={15} /> Copy to our library
         </button>
       </div>
     </div>
@@ -2805,6 +2787,7 @@ function LibraryCard({ snack: s, inWeek, isNext, onToggleInWeek, onToggleTag, on
           )}
         </div>
         <p className="text-xs font-bold text-muted mt-1">
+          {s.copiedFrom?.householdName && `From ${s.copiedFrom.householdName} · `}
           {s.lastMadeWeek ? `Made week of ${prettyWeek(s.lastMadeWeek)}` : "Not made yet"}
           {(s.ratings || []).length > 1 && ` · ${s.ratings.length} times`}
         </p>
@@ -3211,7 +3194,7 @@ function LoginForm() {
 
 async function loadHousehold(userId) {
   const { data: me, error } = await supabase.from("household_members")
-    .select("household_id, show_shared").eq("user_id", userId).maybeSingle();
+    .select("household_id").eq("user_id", userId).maybeSingle();
   if (error) throw error;
   if (!me) return null;
   const [{ data: h, error: hErr }, { data: members, error: mErr }] = await Promise.all([
@@ -3219,7 +3202,7 @@ async function loadHousehold(userId) {
     supabase.from("household_members").select("user_id, email").eq("household_id", me.household_id).order("joined_at"),
   ]);
   if (hErr || mErr) throw hErr || mErr;
-  return { ...h, show_shared: me.show_shared, members: members || [] };
+  return { ...h, members: members || [] };
 }
 
 // Database errors raised by the household functions are written for people.
@@ -3384,10 +3367,6 @@ function HouseholdPanel({ household, userId, onChange, onSignOut, flash }) {
     if (await act("share", () => supabase.rpc("update_household", { share: on }))) onChange();
   }
 
-  async function toggleShowShared() {
-    if (await act("show", () => supabase.rpc("set_show_shared", { show: !household.show_shared }))) onChange();
-  }
-
   async function makeInvite() {
     const res = await act("invite", () => supabase.rpc("create_household_invite"));
     if (res) setInvite(res.data);
@@ -3464,9 +3443,6 @@ function HouseholdPanel({ household, userId, onChange, onSignOut, flash }) {
       <h3 className="text-xs font-extrabold mt-5">Sharing</h3>
       <HouseholdToggle on={household.share_library} onClick={toggleShare} busy={busy === "share"} disabled={!!busy} title="Share our library">
         Other households can see our recipes and cook times and copy them. Our ratings and plans stay private.
-      </HouseholdToggle>
-      <HouseholdToggle on={household.show_shared} onClick={toggleShowShared} busy={busy === "show"} disabled={!!busy} title="Show other households' libraries">
-        Adds an "Other households" view to the Library tab. Just for you.
       </HouseholdToggle>
 
       <ThemePicker />

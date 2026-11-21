@@ -3,6 +3,7 @@
 Newest first. Add an entry for every user-visible or infrastructure change.
 
 ## 2026-11-21
+- Library tab: the Ours / Other households pills and the Household panel's "Show other households' libraries" switch are replaced by one "Other households" pill, off by default, that mixes shared recipes into our list with a "From <household>" credit instead of a section per household. All / Weekday dinner / Snacks became two pills, Dinners and Snacks, all showing when both are off; the three pills fit on one row on a 360px-wide phone. Search also matches the household a recipe came from.
 - Fixed past weeks showing twice on the History tab. Rating a recipe already recorded its week, and the Monday rollover then added it again. Weeks are now merged by date, and existing duplicates are folded together (and saved) the next time the app loads.
 - New households start with an empty library instead of 14 built-in snacks, and deleting every recipe no longer brings the built-in ones back on the next load. Existing libraries are unchanged.
 
