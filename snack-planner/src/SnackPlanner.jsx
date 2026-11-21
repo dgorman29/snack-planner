@@ -2542,9 +2542,9 @@ function LibraryView({ library, onAdd, onRemove, onUpdate, week, isNext, selecte
       </div>
 
       <div className="flex flex-wrap gap-2 mb-4">
-        <Pill active={kinds.includes("dinner")} onClick={() => toggleKind("dinner")}>{TAG_LABEL[DINNER_TAG]}</Pill>
-        <Pill active={kinds.includes("snack")} onClick={() => toggleKind("snack")}>Snacks</Pill>
-        <Pill active={withOthers} onClick={() => setWithOthers((o) => !o)}>Other households</Pill>
+        <Pill compact active={kinds.includes("dinner")} onClick={() => toggleKind("dinner")}>Dinners</Pill>
+        <Pill compact active={kinds.includes("snack")} onClick={() => toggleKind("snack")}>Snacks</Pill>
+        <Pill compact active={withOthers} onClick={() => setWithOthers((o) => !o)}>Other households</Pill>
       </div>
 
       {isNext && (
