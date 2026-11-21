@@ -1964,6 +1964,7 @@ function CookingScreen({ snack, startedAt, onFinish, onLater, onSaveMethod }) {
   const [now, setNow] = useState(Date.now());
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState(null);
+  const [scale, setScale] = useState(1); // 1x, 2x or 3x the ingredient quantities
 
   useEffect(() => {
     const t = setInterval(() => setNow(Date.now()), 1000);
@@ -1997,13 +1998,34 @@ function CookingScreen({ snack, startedAt, onFinish, onLater, onSaveMethod }) {
         </div>
         <h1 className="font-display text-[30px] leading-tight font-semibold">{snack.title}</h1>
 
-        <h2 className="font-display text-xl font-semibold mt-6 mb-2">Ingredients</h2>
+        <div className="flex items-center justify-between gap-3 mt-6 mb-2">
+          <h2 className="font-display text-xl font-semibold">Ingredients</h2>
+          {!!(snack.ingredients || []).length && (
+            <div className="flex gap-1.5" role="group" aria-label="Recipe size">
+              {[1, 2, 3].map((x) => (
+                <Pill key={x} compact active={scale === x} onClick={() => setScale(x)}>{x}×</Pill>
+              ))}
+            </div>
+          )}
+        </div>
         {(snack.ingredients || []).length ? (
-          <ul className="sticker p-4 space-y-2">
-            {snack.ingredients.map((i, n) => (
-              <li key={n} className="text-[15px] font-bold leading-snug">{ingredientLine(i)}</li>
-            ))}
-          </ul>
+          <>
+            <ul className="sticker p-4 space-y-2">
+              {snack.ingredients.map((i, n) => {
+                const q = parseQty(i.qty);
+                return (
+                  <li key={n} className="text-[15px] font-bold leading-snug">
+                    {ingredientLine(scale === 1 || q == null ? i : { ...i, qty: q * scale })}
+                  </li>
+                );
+              })}
+            </ul>
+            {scale > 1 && (
+              <p className="text-xs font-extrabold text-muted mt-2">
+                Quantities are {scale}×. Amounts written in the method below aren't changed.
+              </p>
+            )}
+          </>
         ) : (
           <p className="text-[15px] font-bold text-muted">No ingredients listed.</p>
         )}

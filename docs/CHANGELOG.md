@@ -3,6 +3,7 @@
 Newest first. Add an entry for every user-visible or infrastructure change.
 
 ## 2026-11-21
+- Cooking view: 1× / 2× / 3× buttons above the ingredients scale their quantities for a double or triple batch. The method text, shopping list and saved recipe are unchanged.
 - "Show other households' libraries" is back in the Household panel. With it on, the Library tab lists other households' shared recipes alongside ours by default, and the "Other households" pill narrows the list to just theirs (copied ones say "In our library"). With it off, the pill is hidden and only our recipes show.
 - Library tab: the Ours / Other households pills and the Household panel's "Show other households' libraries" switch are replaced by one "Other households" pill, off by default, that mixes shared recipes into our list with a "From <household>" credit instead of a section per household. All / Weekday dinner / Snacks became two pills, Dinners and Snacks, all showing when both are off; the three pills fit on one row on a 360px-wide phone. Search also matches the household a recipe came from.
 - Fixed past weeks showing twice on the History tab. Rating a recipe already recorded its week, and the Monday rollover then added it again. Weeks are now merged by date, and existing duplicates are folded together (and saved) the next time the app loads.
