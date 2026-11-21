@@ -8,6 +8,7 @@ Current behavior of the app. Update this file whenever a feature is added, chang
 
 ## Install as an app
 - Installable as a standalone app (Chrome on Android: menu > Install app). Opens full-screen with its own icon. Requires being online; there is no offline mode.
+- Updates itself: when the app is brought back to the front (checked at most once a minute) and a newer version has been deployed, it reloads onto it. A cooking session in progress carries on with its timer. If a recipe is being added or edited, it waits until the next time the app comes to the front.
 
 ## Login
 - Email and password sign-in (Supabase Auth).
