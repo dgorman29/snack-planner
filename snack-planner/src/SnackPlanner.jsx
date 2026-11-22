@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo, useRef, useCallback } from "react"
 import {
   Carrot, ShoppingBasket, ClipboardCheck, BookMarked, TrendingUp,
   Plus, Check, X, Link2, Loader2, Copy, Search, RefreshCw,
-  ChevronDown, ChevronRight, Trash2, Sparkles, Clock, Pencil, Camera, ChefHat, Refrigerator,
+  ChevronDown, ChevronRight, Trash2, GripVertical, Sparkles, Clock, Pencil, Camera, ChefHat, Refrigerator,
 } from "lucide-react";
 import { supabase, supabaseConfigured } from "./lib/supabaseClient";
 import { THEMES, loadTheme, saveTheme } from "./themes.js";
@@ -1225,6 +1225,16 @@ function SnackPlannerApp({ household, userId, onHouseholdChange, onSignOut }) {
     }));
   }
 
+  // Shopping list drag and drop: put an ingredient in another section everywhere
+  // it appears in the library, and remember it for ingredients typed later.
+  function moveIngredientSection(name, section) {
+    const n = normName(name);
+    setLibrary((lib) => lib.map((s) => (s.ingredients || []).some((i) => normName(i.name) === n && i.section !== section)
+      ? { ...s, ingredients: s.ingredients.map((i) => (normName(i.name) === n ? { ...i, section } : i)) }
+      : s));
+    setSectionMemory((m) => ({ ...m, [sectionKey(name)]: section }));
+  }
+
   function toggleLibraryTag(id, tag) {
     setLibrary((lib) => lib.map((s) => {
       if (s.id !== id) return s;
@@ -1443,7 +1453,7 @@ function SnackPlannerApp({ household, userId, onHouseholdChange, onSignOut }) {
         {tab === "list" && (
           <ShoppingView
             lists={shopLists} view={listView} setView={setListView}
-            pantry={pantry} setPantry={setPantry}
+            pantry={pantry} setPantry={setPantry} onMoveIngredient={moveIngredientSection}
             onGoToWeek={(which) => { if (which === "this" || which === "next") setPlanWhich(which); setTab("week"); }}
           />
         )}
@@ -2179,7 +2189,95 @@ async function copyList(lists, view, pantry, flash) {
   }
 }
 
-function ShoppingView({ lists, view, setView, pantry, setPantry, onGoToWeek }) {
+/* Drag and drop between shopping list sections, with pointer events so it works
+   with touch (HTML5 drag and drop doesn't on iPad/iPhone). Dragging starts from
+   a row's grip handle; the section under the finger lights up, and the page
+   scrolls when the finger nears the top or bottom edge. */
+const DRAG_EDGE = 90; // px from the top/bottom edge where the page starts scrolling
+
+function useSectionDrag(onDrop) {
+  const [drag, setDrag] = useState(null); // { id, label, from, over, x, y, offY, left, width }
+  const live = useRef(null);
+  const dropRef = useRef(onDrop);
+  dropRef.current = onDrop;
+
+  useEffect(() => {
+    if (!drag) return undefined;
+    let raf = 0;
+    const sectionAt = (x, y) => document.elementFromPoint(x, y)?.closest("[data-drop-section]")?.dataset.dropSection || null;
+    const tick = () => {
+      const d = live.current;
+      if (!d) return;
+      const bottom = window.innerHeight - DRAG_EDGE - 60; // clear of the tab bar
+      const dy = d.y < DRAG_EDGE ? -(DRAG_EDGE - d.y) / 6 : d.y > bottom ? (d.y - bottom) / 6 : 0;
+      if (dy) {
+        window.scrollBy(0, Math.max(-16, Math.min(16, dy)));
+        const over = sectionAt(d.x, d.y);
+        if (over !== d.over) setDrag((cur) => cur && { ...cur, over });
+      }
+      raf = requestAnimationFrame(tick);
+    };
+    const move = (e) => {
+      e.preventDefault();
+      const over = sectionAt(e.clientX, e.clientY);
+      setDrag((cur) => {
+        if (!cur) return cur;
+        const next = { ...cur, x: e.clientX, y: e.clientY, over };
+        live.current = next;
+        return next;
+      });
+    };
+    const end = (e) => {
+      const d = live.current;
+      if (e.type === "pointerup" && d?.over && d.over !== d.from) dropRef.current(d.id, d.over);
+      live.current = null;
+      setDrag(null);
+    };
+    window.addEventListener("pointermove", move, { passive: false });
+    window.addEventListener("pointerup", end);
+    window.addEventListener("pointercancel", end);
+    raf = requestAnimationFrame(tick);
+    return () => {
+      cancelAnimationFrame(raf);
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", end);
+      window.removeEventListener("pointercancel", end);
+    };
+  }, [!!drag]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  function start(e, id, label, from) {
+    if (e.button !== undefined && e.button !== 0) return;
+    e.preventDefault();
+    e.currentTarget.releasePointerCapture?.(e.pointerId); // let elementFromPoint see what's under the finger
+    const row = e.currentTarget.closest("[data-drag-row]").getBoundingClientRect();
+    const d = { id, label, from, over: from, x: e.clientX, y: e.clientY, offY: e.clientY - row.top, left: row.left, width: row.width };
+    live.current = d;
+    setDrag(d);
+  }
+
+  return { drag, start };
+}
+
+// The grip on each shopping row. Drag it to another section; with a keyboard,
+// the up and down arrows move the item one section at a time.
+function DragHandle({ label, section, onStart, onStep }) {
+  return (
+    <button
+      onPointerDown={onStart}
+      onKeyDown={(e) => {
+        const i = SECTIONS.indexOf(section) + (e.key === "ArrowUp" ? -1 : e.key === "ArrowDown" ? 1 : 0);
+        if (i !== SECTIONS.indexOf(section) && i >= 0 && i < SECTIONS.length) { e.preventDefault(); onStep(SECTIONS[i]); }
+      }}
+      aria-label={`Move ${label} to another section (drag, or use the up and down arrow keys)`}
+      className="w-9 h-11 flex items-center justify-center shrink-0 text-muted cursor-grab select-none"
+      style={{ touchAction: "none", WebkitTouchCallout: "none" }}
+    >
+      <GripVertical size={18} />
+    </button>
+  );
+}
+
+function ShoppingView({ lists, view, setView, pantry, setPantry, onGoToWeek, onMoveIngredient }) {
   const pantrySet = useMemo(() => new Set(pantry), [pantry]);
   const { visible, rows, grouped, weeksFor, isChecked, isHave, manual, recipeCount } = combineLists(lists, view, pantrySet);
   const [showHave, setShowHave] = useState(false);
@@ -2225,6 +2323,19 @@ function ShoppingView({ lists, view, setView, pantry, setPantry, onGoToWeek }) {
     m.list.setWeek((w) => ({ ...w, manual: (w.manual || []).filter((x) => x.id !== m.id) }));
   }
 
+  // Ids are "row:<key>" for recipe ingredients and "manual:<id>" for hand-added items.
+  function moveTo(id, section) {
+    const [kind, ref] = [id.slice(0, id.indexOf(":")), id.slice(id.indexOf(":") + 1)];
+    if (kind === "row") {
+      const row = rows.find((r) => r.key === ref);
+      if (row) onMoveIngredient(row.name, section);
+    } else {
+      const m = manual.find((x) => x.id === ref);
+      if (m) m.list.setWeek((w) => ({ ...w, manual: (w.manual || []).map((x) => (x.id === m.id ? { ...x, section } : x)) }));
+    }
+  }
+  const { drag, start: startDrag } = useSectionDrag(moveTo);
+
   if (!lists.some(hasListItems)) {
     return (
       <Empty icon={ShoppingBasket} action={
@@ -2269,17 +2380,27 @@ function ShoppingView({ lists, view, setView, pantry, setPantry, onGoToWeek }) {
         {SECTIONS.map((sec) => {
           const items = (grouped[sec] || []).filter((r) => !isHave(r) && !(view.hideBought && isChecked(r)));
           const extra = manual.filter((m) => m.section === sec && !(view.hideBought && m.checked));
-          if (!items.length && !extra.length) return null;
+          // While dragging, empty sections show too so there's somewhere to drop.
+          if (!items.length && !extra.length && !drag) return null;
+          const target = drag && drag.over === sec && drag.from !== sec;
+          const dimmed = (id) => (drag && drag.id === id ? { opacity: 0.35 } : undefined);
           return (
-            <div key={sec}>
+            <div key={sec} data-drop-section={sec}>
               <h3 className={`inline-block ${SECTION_BG[sec]} border-2 border-ink rounded-full px-3 py-0.5 font-display text-sm font-semibold mb-2`}>
                 {SECTION_LABEL[sec]}
               </h3>
-              <div className="sticker overflow-hidden divide-y-2 divide-line">
+              <div className={`sticker overflow-hidden divide-y-2 divide-line ${target ? SECTION_BG[sec] : ""}`}
+                   style={target ? { outline: "3px dashed rgb(var(--ink))", outlineOffset: 3 } : undefined}>
+                {!items.length && !extra.length && (
+                  <div className="min-h-[52px] flex items-center justify-center text-xs font-extrabold text-muted">Drop here</div>
+                )}
                 {items.map((r) => {
                   const done = isChecked(r);
                   return (
-                    <div key={r.key} className="flex items-center min-h-[52px] pl-1 pr-1.5">
+                    <div key={r.key} data-drag-row className="flex items-center min-h-[52px] pl-1 pr-1.5" style={dimmed(`row:${r.key}`)}>
+                      <DragHandle label={r.name} section={sec}
+                                  onStart={(e) => startDrag(e, `row:${r.key}`, rowLabel(r), sec)}
+                                  onStep={(to) => moveTo(`row:${r.key}`, to)} />
                       <CheckBox on={done} onClick={() => toggleCheck(r)} label={`Check off ${r.name}`} />
                       <div className="flex-1 min-w-0 py-2">
                         <span className={`text-[15px] font-extrabold block ${done ? "line-through text-muted" : ""}`}>
@@ -2296,7 +2417,10 @@ function ShoppingView({ lists, view, setView, pantry, setPantry, onGoToWeek }) {
                   );
                 })}
                 {extra.map((m) => (
-                  <div key={m.id} className="flex items-center min-h-[52px] pl-1 pr-1.5">
+                  <div key={m.id} data-drag-row className="flex items-center min-h-[52px] pl-1 pr-1.5" style={dimmed(`manual:${m.id}`)}>
+                    <DragHandle label={m.name} section={sec}
+                                onStart={(e) => startDrag(e, `manual:${m.id}`, m.name, sec)}
+                                onStep={(to) => moveTo(`manual:${m.id}`, to)} />
                     <CheckBox on={m.checked} onClick={() => toggleManual(m)} label={`Check off ${m.name}`} />
                     <span className={`flex-1 min-w-0 text-[15px] font-extrabold ${m.checked ? "line-through text-muted" : ""}`}>{m.name}</span>
                     <button onClick={() => removeManual(m)} aria-label={`Remove ${m.name}`} className="w-11 h-11 flex items-center justify-center shrink-0 text-muted">
@@ -2309,6 +2433,14 @@ function ShoppingView({ lists, view, setView, pantry, setPantry, onGoToWeek }) {
           );
         })}
       </div>
+
+      {drag && (
+        <div className="fixed z-[70] pointer-events-none sticker flex items-center gap-2 min-h-[52px] px-3 text-[15px] font-extrabold shadow-sticker-lg"
+             style={{ left: drag.left, width: drag.width, top: drag.y - drag.offY, transform: "rotate(-1.5deg)" }}>
+          <GripVertical size={18} className="text-muted shrink-0" />
+          <span className="truncate">{drag.label}</span>
+        </div>
+      )}
 
       <div className="mt-5">
         <div className="flex gap-2">
