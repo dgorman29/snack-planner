@@ -2,6 +2,9 @@
 
 Newest first. Add an entry for every user-visible or infrastructure change.
 
+## 2026-11-24
+- Staples on the List tab: a household-wide list of things bought most weeks. Save or remove staples, change a staple's section, and put one ("Add") or all ("Add all") on the shopping list as hand-added items; "On list" takes one back off, and "In recipes" marks staples a planned recipe already covers. Stored in a new `snackplan:staples:v1` key; no migration needed.
+
 ## 2026-11-22
 - Shopping list: drag items between sections by a grip handle (pointer events, so it works with touch on iPad/iPhone; arrow keys on the handle too). Moving a recipe ingredient updates its section in every library recipe with that name and in the remembered sections; hand-added items move on their own.
 
