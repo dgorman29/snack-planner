@@ -5,6 +5,18 @@ Newest first. Add an entry for every user-visible or infrastructure change.
 ## 2026-11-24
 - Staples on the List tab: a household-wide list of things bought most weeks. Save or remove staples, change a staple's section, and put one ("Add") or all ("Add all") on the shopping list as hand-added items; "On list" takes one back off, and "In recipes" marks staples a planned recipe already covers. Stored in a new `snackplan:staples:v1` key; no migration needed.
 
+## 2026-11-22
+- Shopping list: drag items between sections by a grip handle (pointer events, so it works with touch on iPad/iPhone; arrow keys on the handle too). Moving a recipe ingredient updates its section in every library recipe with that name and in the remembered sections; hand-added items move on their own.
+
+## 2026-11-21
+- The cooking view keeps the screen on (Screen Wake Lock API, re-taken when the app comes back to the front). New "Keep screen on while cooking" switch in the Household panel, on by default, per device in `snackplan:awake:v1`.
+- The installed app picks up new deploys: when it comes back to the front, it checks a `version.json` written by each build and reloads if a newer version is live (not while a recipe form is open). Fixes the Home Screen app on iPad staying on an old version.
+- Cooking view: 1× / 2× / 3× buttons above the ingredients scale their quantities for a double or triple batch. The method text, shopping list and saved recipe are unchanged.
+- "Show other households' libraries" is back in the Household panel. With it on, the Library tab lists other households' shared recipes alongside ours by default, and the "Other households" pill narrows the list to just theirs (copied ones say "In our library"). With it off, the pill is hidden and only our recipes show.
+- Library tab: the Ours / Other households pills and the Household panel's "Show other households' libraries" switch are replaced by one "Other households" pill, off by default, that mixes shared recipes into our list with a "From <household>" credit instead of a section per household. All / Weekday dinner / Snacks became two pills, Dinners and Snacks, all showing when both are off; the three pills fit on one row on a 360px-wide phone. Search also matches the household a recipe came from.
+- Fixed past weeks showing twice on the History tab. Rating a recipe already recorded its week, and the Monday rollover then added it again. Weeks are now merged by date, and existing duplicates are folded together (and saved) the next time the app loads.
+- New households start with an empty library instead of 14 built-in snacks, and deleting every recipe no longer brings the built-in ones back on the next load. Existing libraries are unchanged.
+
 ## 2026-11-13
 - New Fridge tab for leftovers: dinners and Weekend batch snacks go in when marked cooked, sorted oldest first, yellow after 48 hours and red after 72, with "Eaten" and "Tossed" (recorded for later waste stats). The Log gets a "Leftovers in the fridge" box per cooked recipe. Ticked dinners are dated by their planned day. Stored in a new `snackplan:fridge:v1` key and a `cooked` map on the week; no migration needed.
 - Snack filters fit on one line: "Chosen (N)" moved up beside the This week / Next week pills, and the three tier filters share the row below. The shopping list's filters and section picker wrap instead of scrolling sideways if a screen is too narrow for them.

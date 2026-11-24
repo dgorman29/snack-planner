@@ -8,6 +8,7 @@ Current behavior of the app. Update this file whenever a feature is added, chang
 
 ## Install as an app
 - Installable as a standalone app (Chrome on Android: menu > Install app). Opens full-screen with its own icon. Requires being online; there is no offline mode.
+- Updates itself: when the app is brought back to the front (checked at most once a minute) and a newer version has been deployed, it reloads onto it. A cooking session in progress carries on with its timer. If a recipe is being added or edited, it waits until the next time the app comes to the front.
 
 ## Login
 - Email and password sign-in (Supabase Auth).
@@ -23,7 +24,7 @@ Current behavior of the app. Update this file whenever a feature is added, chang
 - "Leave household" asks to confirm. The last member to leave deletes the household and all its data; the panel says so first. After leaving, the account is back at "Set up your household".
 - Any member can rename, invite, change sharing or leave. Only the creator can remove members. If the creator leaves, the longest-standing remaining member becomes the creator. "Our household" (made by the households migration) has its earliest account as creator.
 - **Share our library** (per household, off by default): lets other households see our recipes, including cook times and the full recipe, and copy them. Ratings, when we last made a recipe, plans, lists and history stay private.
-- **Show other households' libraries** (per person, off by default): adds Ours / Other households pills to the Library tab (see Library tab).
+- **Show other households' libraries** (per person, off by default): mixes sharing households' recipes into the Library tab and adds an "Other households" pill there (see Library tab).
 
 ## Recipes: dinners and snacks
 - Every recipe lives in the Library. A recipe tagged **Weekday dinner** is a dinner; every other recipe is a snack.
@@ -62,6 +63,8 @@ Current behavior of the app. Update this file whenever a feature is added, chang
 
 ### Cooking
 - "Start Cooking" (Tonight card and selected snack cards) or "Cook Now" (any Library card) opens a full-screen cooking view: a running timer, the ingredients at the top, then the full method as numbered steps. Recipe cards only show a short summary; this view shows the whole recipe.
+- Above the ingredients, **1× / 2× / 3×** buttons multiply every ingredient quantity for a double or triple batch (starts at 1× each time the view opens). Only the ingredient list changes: amounts written in the method steps, the shopping list and the saved recipe stay as they are.
+- The screen stays on while the cooking view is open, so it won't dim or lock mid-recipe. Turn this off with "Keep screen on while cooking" in the Household panel (under This device; on by default, remembered per device). It needs a browser that supports keeping the screen awake; on iPad/iPhone the Home Screen app needs iOS 18.4 or later. If the browser can't, the switch says so and the screen sleeps as usual.
 - The only ways out are **Finished** and **Cook Later**. Finished marks the recipe cooked (prepped, for snacks) and records the time since Start Cooking as one cook time. Cook Later closes the view and forgets the start time, so only uninterrupted start-to-finish sessions are timed.
 - Once a recipe has cook times, the time shown for it everywhere (Tonight card, dinner tiles, snack cards, dinner picker, Library) is the average of all its cook times, rounded to whole minutes (minimum 1). Until then it shows the estimate entered or imported. The Edit form says when the average is in use; its "Time to prepare" field stays as the estimate.
 - The session is remembered on the device that started it, so reloading the page mid-cook returns to the cooking view with the timer still running. A session older than 12 hours is dropped as abandoned. Other devices don't see it.
@@ -82,18 +85,20 @@ Current behavior of the app. Update this file whenever a feature is added, chang
 - One combined list built from the chosen recipes (dinners and snacks) of the weeks shown. Duplicate ingredients (same name and unit) are summed across recipes and weeks, and rows used by several recipes say "for N recipes". A recipe chosen in both weeks counts twice. A line under the filters shows the recipe count.
 - Filter pills at the top: "This week" and "Next week" choose which weeks feed the list (at least one stays on), and "Hide bought" hides checked-off items (the summary line then says how many are hidden). These choices are remembered on the device. If the weeks shown have nothing chosen, the list says so and offers "Plan it".
 - Grouped by produce, dairy, pantry, frozen, other.
+- Drag an item into another section by its grip handle (left of the checkbox; works with touch). While dragging, every section shows, empty ones as "Drop here", and the one under your finger is highlighted; the page scrolls near the top or bottom edge. With a keyboard, focus the handle and use the up and down arrows to move it one section at a time.
+- Moving a recipe ingredient changes its section in every library recipe that uses it (matched by name, ignoring plurals and units) and is remembered for that name, so newly typed ingredients with the same name land there too. Moving a hand-added item changes just that item.
 - Sections for hand-typed ingredients (Add by hand, or new lines in Edit): saved first with a keyword guess, then Claude sorts any names it hasn't seen and the app remembers the answer, so each name is asked about once. If Claude can't be reached the keyword guess stays. Recipes from AI ideas, a link or a photo get their sections from Claude when they're created.
 - Check items off, mark "have it" (remembered in the pantry list), and add manual items. Behind the scenes each week keeps its own ticks, "have it" marks and manual items, so they roll over with the week: ticking a combined row ticks it in every shown week that needs it, and a row shows as ticked only when all of those weeks have it ticked. Hiding a week keeps its ticks. "Add something else" adds to the earliest week shown (this week when both are on).
 - "Copy" (next to the Shopping list title) copies what's still to buy on the combined list as text.
 - **Staples** (below "Add something else", also shown when nothing is planned): the household's list of things bought most weeks, shared by every member. Type a name to save one; its section comes from what Claude has sorted before, else the keyword guess, and tapping the section chip cycles it through the sections. The trash button removes a staple (it doesn't touch the current list).
-- Each staple shows "Add", which puts it on the list as a hand-added item (in the earliest week shown, like "Add something else"); "On list" once it's there, and tapping that takes it off again; or "In recipes" when a shown recipe already needs it (same name), so it isn't doubled. "Add all (N)" adds every staple still showing "Add". The section can be collapsed; that choice is remembered on the device.
+- Each staple shows "Add", which puts it on the list as a hand-added item (in the earliest week shown, like "Add something else"); "On list" once it's there, and tapping that takes it off again; or "In recipes" when a shown recipe already needs it (same name), so it isn't doubled. "Add all (N)" adds every staple still showing "Add". Dragging a staple's list item to another section moves only that item; the staple keeps its own section. The section can be collapsed; that choice is remembered on the device.
 
 ## Log tab
 - Lists the week's chosen recipes plus anything cooked off-plan with "Cook Now". Prepped snacks and cooked dinners can be rated Loved it, Ate some, or Refused. Ratings drive future suggestions. Dinner cards show their day ("Tue dinner") and say "cooked" instead of "prepped".
 - Cooked or prepped cards have a "Leftovers in the fridge" box under the rating buttons. It starts ticked for dinners and Weekend batch snacks and unticked for other snacks; ticking or unticking it puts the leftovers in or takes them out of the Fridge tab. Once they've been eaten or tossed, the card says so, with "Put back" to undo a mistaken tap.
 
 ## Library tab
-- 14 seeded snacks (no seeded dinners). Search by title, vegetable or ingredient. Filter pills: All, Weekday dinner, Snacks. Delete recipes.
+- New households start with an empty library (no built-in recipes); an empty library says how to add one. Search by title, vegetable, ingredient or the household a recipe came from (our own household name matches our own recipes; a copy matches the household it was copied from). Filter pills, all off by default so everything shows: Dinners and Snacks each narrow the list to that kind (Dinners means recipes tagged Weekday dinner; both on is the same as both off), and, when "Show other households' libraries" is on, Other households narrows it to other households' recipes (see below). The pills start off each time the tab opens. Delete recipes.
 - Tap a recipe to expand it: shows the description (steps), ingredients and recipe link.
 - "Edit" (shown when a recipe is expanded) changes its name, recipe link, snack timing, description, full recipe, time to prepare in minutes, and ingredients (one per line, e.g. "2 tbsp olive oil"; unchanged lines keep their shopping-list section, new ones are sorted by Claude, see List tab). Changes show on the Week tab and shopping list too; past weeks in History keep the name the recipe had then.
 - Add from a photo: "From a photo" on the Add a recipe sheet takes up to 4 photos (camera or gallery) of a cookbook page, recipe card or handwritten note. Photos are shrunk on the phone, then Claude transcribes the recipe with its quantities. The same "Weekday dinner" pill applies.
@@ -107,13 +112,14 @@ Current behavior of the app. Update this file whenever a feature is added, chang
 - "Add to this week" on a snack selects it for the current week (it appears on the Snacks view and feeds the shopping list). On a dinner the button reads "Add to a day" and asks which day. Tap "In this week" to take either back out (a dinner also leaves its day). A new set of snack suggestions replaces the Snacks cards but a pinned snack stays selected and on the list and log.
 
 ### Other households
-- Shown when "Show other households' libraries" is on. "Other households" lists the libraries of every household sharing theirs, grouped by household name and read fresh each time the view opens, so edits they make show up. Search and the All / Weekday dinner / Snacks pills apply.
-- Cards show the vegetable, Weekday dinner tag, snack timing and their cook time (their average of timed sessions, or their estimate). Expanded, they show the description, ingredients, full recipe steps and link.
-- "Copy to our library" saves our own copy; the button then reads "In our library". A copy never changes when theirs does. It starts with no ratings and no timed sessions of its own; their cook time becomes its estimate until we time it ourselves.
+- With "Show other households' libraries" on (Household panel), every sharing household's recipes are listed after ours, in one list rather than a section per household, and an "Other households" pill appears. With the switch off there's no pill and only our recipes show. Their recipes are read fresh each time the Library tab opens, so edits they make show up. Search and the Dinners / Snacks pills apply to them too.
+- In the mixed list, a recipe we've already copied isn't listed again; our copy shows instead. With the Other households pill on, only their recipes show (our copies are hidden), and ones we've copied say "In our library".
+- Their cards say "From <household name>" and show the vegetable, Weekday dinner tag, snack timing and their cook time (their average of timed sessions, or their estimate). Expanded, they show the description, ingredients, full recipe steps and link.
+- "Copy to our library" saves our own copy, which replaces their card in the mixed list. Our copy's card keeps the "From <household name>" credit. A copy never changes when theirs does. It starts with no ratings and no timed sessions of its own; their cook time becomes its estimate until we time it ourselves.
 
 ## History tab
 - Exposure meter per vegetable, out to 10 tries, with a "warming up" flag when recent ratings improve.
-- Past weeks with each verdict. Weeks roll over automatically on Monday: next week's plan (if any) becomes the current week, otherwise it starts empty.
+- Past weeks with each verdict. Weeks roll over automatically on Monday: next week's plan (if any) becomes the current week, otherwise it starts empty. Each week appears once: a week with ratings is listed as soon as the first rating is logged, and the rollover adds anything else to that same entry.
 
 ## AI limits
 - AI features only work for accounts in a household.

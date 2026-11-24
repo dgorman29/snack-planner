@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo, useRef, useCallback } from "react"
 import {
   Carrot, ShoppingBasket, ClipboardCheck, BookMarked, TrendingUp,
   Plus, Check, X, Link2, Loader2, Copy, Search, RefreshCw,
-  ChevronDown, ChevronRight, Trash2, Sparkles, Clock, Pencil, Camera, ChefHat, Refrigerator,
+  ChevronDown, ChevronRight, Trash2, GripVertical, Sparkles, Clock, Pencil, Camera, ChefHat, Refrigerator,
 } from "lucide-react";
 import { supabase, supabaseConfigured } from "./lib/supabaseClient";
 import { THEMES, loadTheme, saveTheme } from "./themes.js";
@@ -192,113 +192,12 @@ function vegColor(name) {
   return VEG_PALETTE[h % VEG_PALETTE.length];
 }
 
-/* ---------------------------------------------------------------- seeding */
+/* ---------------------------------------------------------------- recipes */
 
 let seq = 0;
 const newId = () => `s${Date.now().toString(36)}${(seq++).toString(36)}${Math.floor(Math.random() * 1296).toString(36)}`;
 
 const ing = (name, qty, unit, section) => ({ name, qty, unit: unit || "", section: section || "other" });
-
-function mkSnack(title, vegetable, tier, prepMinutes, ingredients, steps, extra = {}) {
-  return {
-    id: newId(), title, vegetable, tier, prepMinutes, ingredients, steps,
-    source: "seed", url: "", ratings: [], lastMadeWeek: null, ...extra,
-  };
-}
-
-function seedLibrary() {
-  return [
-    mkSnack("Cucumber coins with whipped cottage cheese", "cucumber", "assembly", 5, [
-      ing("English cucumber", 1, "", "produce"),
-      ing("cottage cheese", 1, "cup", "dairy"),
-      ing("lemon", 0.5, "", "produce"),
-      ing("fresh dill", 1, "tbsp", "produce"),
-    ], "Blend cottage cheese with lemon and dill until smooth. Slice cucumber into thin half-moons for scooping."),
-
-    mkSnack("Roasted sweet potato wedges", "sweet potato", "batch", 40, [
-      ing("sweet potato", 3, "", "produce"),
-      ing("olive oil", 2, "tbsp", "pantry"),
-      ing("cinnamon", 0.5, "tsp", "pantry"),
-    ], "Cut into finger-length wedges, toss with oil and cinnamon, roast at 425°F for 30 min. Keeps 4 days, good cold in the car."),
-
-    mkSnack("Zucchini oat mini muffins", "zucchini", "batch", 35, [
-      ing("zucchini", 2, "", "produce"),
-      ing("rolled oats", 2, "cup", "pantry"),
-      ing("eggs", 2, "", "dairy"),
-      ing("plain yogurt", 0.5, "cup", "dairy"),
-      ing("maple syrup", 3, "tbsp", "pantry"),
-      ing("baking powder", 1, "tsp", "pantry"),
-    ], "Blend oats to flour, fold in grated zucchini, bake in a mini tin at 350°F for 16 min. Freezes well."),
-
-    mkSnack("Broccoli trees with yogurt ranch", "broccoli", "assembly", 8, [
-      ing("broccoli crown", 1, "", "produce"),
-      ing("plain whole-milk yogurt", 0.5, "cup", "dairy"),
-      ing("garlic powder", 0.25, "tsp", "pantry"),
-      ing("chives", 1, "tbsp", "produce"),
-    ], "Steam florets 4 minutes so they squash easily, cool, serve with stirred-together yogurt dip."),
-
-    mkSnack("Pea and cheese scoop cups", "peas", "grab", 2, [
-      ing("frozen petite peas", 2, "cup", "frozen"),
-      ing("mild cheddar", 4, "oz", "dairy"),
-    ], "Thaw peas under warm water. Shred cheddar over the top and serve in a lidded cup."),
-
-    mkSnack("Butternut and apple mash cups", "butternut squash", "batch", 35, [
-      ing("butternut squash", 1, "", "produce"),
-      ing("apple", 2, "", "produce"),
-      ing("cinnamon", 0.5, "tsp", "pantry"),
-    ], "Roast cubed squash and apple 25 min, mash, portion into small cups. Travels well."),
-
-    mkSnack("Red pepper strips with hummus", "bell pepper", "assembly", 3, [
-      ing("red bell pepper", 2, "", "produce"),
-      ing("hummus", 1, "cup", "pantry"),
-    ], "Slice pepper into thin strips she can hold. Hummus in a small dipping cup."),
-
-    mkSnack("Spinach and banana silver-dollar pancakes", "spinach", "batch", 30, [
-      ing("baby spinach", 3, "cup", "produce"),
-      ing("banana", 2, "", "produce"),
-      ing("eggs", 2, "", "dairy"),
-      ing("rolled oats", 1.5, "cup", "pantry"),
-      ing("milk", 0.5, "cup", "dairy"),
-    ], "Blend everything, cook silver-dollar rounds, freeze flat with parchment between. Reheat 20 seconds."),
-
-    mkSnack("Roasted cauliflower bites", "cauliflower", "batch", 30, [
-      ing("cauliflower", 1, "head", "produce"),
-      ing("olive oil", 2, "tbsp", "pantry"),
-      ing("parmesan", 0.25, "cup", "dairy"),
-    ], "Small florets, oil, roast at 425°F for 22 min until the edges brown. Dust with parmesan while hot."),
-
-    mkSnack("Avocado white bean smash on toast fingers", "avocado", "assembly", 5, [
-      ing("avocado", 1, "", "produce"),
-      ing("cannellini beans", 1, "can", "pantry"),
-      ing("soft sandwich bread", 2, "slice", "pantry"),
-      ing("lemon", 0.5, "", "produce"),
-    ], "Mash avocado and drained beans with lemon, spread thin on toast, cut into finger strips."),
-
-    mkSnack("Soft-steamed carrot sticks", "carrot", "batch", 15, [
-      ing("carrots", 6, "", "produce"),
-      ing("butter", 1, "tbsp", "dairy"),
-    ], "Cut into finger-length sticks, steam 10–12 min until they squash between your fingers. Toss with butter."),
-
-    mkSnack("Corn and zucchini mini fritters", "corn", "batch", 30, [
-      ing("frozen corn", 1.5, "cup", "frozen"),
-      ing("zucchini", 1, "", "produce"),
-      ing("eggs", 2, "", "dairy"),
-      ing("flour", 0.5, "cup", "pantry"),
-    ], "Squeeze the grated zucchini dry, mix, pan-fry small rounds 2 min a side. Freezes well."),
-
-    mkSnack("Smashed edamame cups", "edamame", "grab", 2, [
-      ing("shelled edamame", 2, "cup", "frozen"),
-      ing("sesame oil", 1, "tsp", "pantry"),
-    ], "Thaw and smash each bean lightly with a fork so nothing stays whole and round. Drizzle sesame oil."),
-
-    mkSnack("Pink beet yogurt dip with pita fingers", "beet", "batch", 30, [
-      ing("beets", 2, "", "produce"),
-      ing("plain whole-milk yogurt", 1, "cup", "dairy"),
-      ing("pita bread", 2, "", "pantry"),
-      ing("lemon", 0.5, "", "produce"),
-    ], "Roast beets until soft, blend with yogurt and lemon. Cut warm pita into soft strips."),
-  ];
-}
 
 /* ------------------------------------------------------------ snack stats */
 
@@ -322,6 +221,47 @@ function cookMinutes(snack) {
 }
 
 /* ----------------------------------------------------------- cooking session */
+
+// "Keep screen on while cooking" (Household panel). A per-device preference,
+// on unless turned off.
+const KEY_AWAKE = "snackplan:awake:v1";
+const canWakeLock = typeof navigator !== "undefined" && "wakeLock" in navigator;
+
+function loadAwake() {
+  try { return localStorage.getItem(KEY_AWAKE) !== "off"; } catch { return true; }
+}
+
+function saveAwake(on) {
+  try { localStorage.setItem(KEY_AWAKE, on ? "on" : "off"); } catch {}
+}
+
+// Hold a screen wake lock while `enabled`. The browser drops the lock whenever
+// the page is hidden, so take it again each time the app comes back.
+function useWakeLock(enabled) {
+  useEffect(() => {
+    if (!enabled || !canWakeLock) return undefined;
+    let lock = null;
+    let done = false;
+    async function take() {
+      if (done || document.visibilityState !== "visible" || (lock && !lock.released)) return;
+      try {
+        const l = await navigator.wakeLock.request("screen");
+        if (done) l.release().catch(() => {});
+        else lock = l;
+      } catch {
+        // Refused (low battery mode, unsupported in this context): the screen just sleeps as usual.
+      }
+    }
+    take();
+    document.addEventListener("visibilitychange", take);
+    return () => {
+      done = true;
+      document.removeEventListener("visibilitychange", take);
+      lock?.release().catch(() => {});
+    };
+  }, [enabled]);
+}
+
 /* A session lives on this device only (not in the shared week data), so it can
    survive a reload mid-cook without showing up on someone else's phone. */
 
@@ -856,6 +796,25 @@ function Empty({ icon: Icon, children, action }) {
 
 /* ------------------------------------------------------------------- app */
 
+// One record per week id. Rating a recipe records its week straight away (see
+// logVerdict), so archiving that week at rollover, or archiving it twice when two
+// devices roll over at once, must merge into the existing record, not add another.
+// Entries already recorded win; archived entries only fill in the missing ones.
+function mergeWeeks(wks) {
+  const out = [];
+  const byId = new Map();
+  for (const w of wks) {
+    const prev = byId.get(w.id);
+    if (!prev) { const copy = { ...w, entries: [...(w.entries || [])] }; byId.set(w.id, copy); out.push(copy); continue; }
+    for (const e of w.entries || []) {
+      const i = prev.entries.findIndex((x) => x.snackId === e.snackId);
+      if (i === -1) prev.entries.push(e);
+      else if (!prev.entries[i].verdict && e.verdict) prev.entries[i] = e;
+    }
+  }
+  return out;
+}
+
 const emptyWeek = (id) => ({
   id,
   suggestions: [],
@@ -936,8 +895,10 @@ function SnackPlannerApp({ household, userId, onHouseholdChange, onSignOut }) {
 
       // Libraries saved before households lived inside the core blob.
       const savedLib = Array.isArray(storedLib) ? storedLib : core?.library;
-      let lib = savedLib?.length ? savedLib : seedLibrary();
-      let wks = core?.weeks || [];
+      let lib = savedLib || []; // new households start with an empty library
+      const savedWeeks = core?.weeks || [];
+      let wks = mergeWeeks(savedWeeks);
+      if (wks.length !== savedWeeks.length) firstRun.current = false; // save the cleaned-up history
       const thisWeekId = weekStartOf();
       let cur = storedWeek && storedWeek.id === thisWeekId ? { ...emptyWeek(thisWeekId), ...storedWeek } : null;
 
@@ -951,7 +912,7 @@ function SnackPlannerApp({ household, userId, onHouseholdChange, onSignOut }) {
           } : null;
         }).filter(Boolean);
         if (entries.length || (storedWeek.selected || []).length) {
-          wks = [...wks, { id: storedWeek.id, entries }];
+          wks = mergeWeeks([...wks, { id: storedWeek.id, entries }]);
           firstRun.current = false; // the archived week is new, so save it straight away
         }
         cur = null;
@@ -1269,6 +1230,16 @@ function SnackPlannerApp({ household, userId, onHouseholdChange, onSignOut }) {
     }));
   }
 
+  // Shopping list drag and drop: put an ingredient in another section everywhere
+  // it appears in the library, and remember it for ingredients typed later.
+  function moveIngredientSection(name, section) {
+    const n = normName(name);
+    setLibrary((lib) => lib.map((s) => (s.ingredients || []).some((i) => normName(i.name) === n && i.section !== section)
+      ? { ...s, ingredients: s.ingredients.map((i) => (normName(i.name) === n ? { ...i, section } : i)) }
+      : s));
+    setSectionMemory((m) => ({ ...m, [sectionKey(name)]: section }));
+  }
+
   function toggleLibraryTag(id, tag) {
     setLibrary((lib) => lib.map((s) => {
       if (s.id !== id) return s;
@@ -1487,7 +1458,7 @@ function SnackPlannerApp({ household, userId, onHouseholdChange, onSignOut }) {
         {tab === "list" && (
           <ShoppingView
             lists={shopLists} view={listView} setView={setListView}
-            pantry={pantry} setPantry={setPantry}
+            pantry={pantry} setPantry={setPantry} onMoveIngredient={moveIngredientSection}
             staples={staples} setStaples={setStaples} sectionMemory={sectionMemory}
             onGoToWeek={(which) => { if (which === "this" || which === "next") setPlanWhich(which); setTab("week"); }}
           />
@@ -1511,7 +1482,7 @@ function SnackPlannerApp({ household, userId, onHouseholdChange, onSignOut }) {
             library={library} onAdd={addToLibrary} onRemove={removeFromLibrary} onUpdate={updateLibrarySnack}
             week={plan} isNext={isNext} selectedIds={plan.selected} onToggleInWeek={toggleInWeek} onToggleTag={toggleLibraryTag}
             onAssignDinner={assignDinner} onCookNow={startCooking}
-            showShared={household.show_shared}
+            householdName={household.name} showShared={household.show_shared}
             busy={busy} setBusy={setBusy} flash={flash}
           />
         )}
@@ -2050,6 +2021,9 @@ function CookingScreen({ snack, startedAt, onFinish, onLater, onSaveMethod }) {
   const [now, setNow] = useState(Date.now());
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState(null);
+  const [scale, setScale] = useState(1); // 1x, 2x or 3x the ingredient quantities
+  const [awake] = useState(loadAwake);
+  useWakeLock(awake);
 
   useEffect(() => {
     const t = setInterval(() => setNow(Date.now()), 1000);
@@ -2083,13 +2057,34 @@ function CookingScreen({ snack, startedAt, onFinish, onLater, onSaveMethod }) {
         </div>
         <h1 className="font-display text-[30px] leading-tight font-semibold">{snack.title}</h1>
 
-        <h2 className="font-display text-xl font-semibold mt-6 mb-2">Ingredients</h2>
+        <div className="flex items-center justify-between gap-3 mt-6 mb-2">
+          <h2 className="font-display text-xl font-semibold">Ingredients</h2>
+          {!!(snack.ingredients || []).length && (
+            <div className="flex gap-1.5" role="group" aria-label="Recipe size">
+              {[1, 2, 3].map((x) => (
+                <Pill key={x} compact active={scale === x} onClick={() => setScale(x)}>{x}×</Pill>
+              ))}
+            </div>
+          )}
+        </div>
         {(snack.ingredients || []).length ? (
-          <ul className="sticker p-4 space-y-2">
-            {snack.ingredients.map((i, n) => (
-              <li key={n} className="text-[15px] font-bold leading-snug">{ingredientLine(i)}</li>
-            ))}
-          </ul>
+          <>
+            <ul className="sticker p-4 space-y-2">
+              {snack.ingredients.map((i, n) => {
+                const q = parseQty(i.qty);
+                return (
+                  <li key={n} className="text-[15px] font-bold leading-snug">
+                    {ingredientLine(scale === 1 || q == null ? i : { ...i, qty: q * scale })}
+                  </li>
+                );
+              })}
+            </ul>
+            {scale > 1 && (
+              <p className="text-xs font-extrabold text-muted mt-2">
+                Quantities are {scale}×. Amounts written in the method below aren't changed.
+              </p>
+            )}
+          </>
         ) : (
           <p className="text-[15px] font-bold text-muted">No ingredients listed.</p>
         )}
@@ -2333,7 +2328,95 @@ function StaplesPanel({ staples, setStaples, sectionMemory, visible, rows, isHav
   );
 }
 
-function ShoppingView({ lists, view, setView, pantry, setPantry, staples, setStaples, sectionMemory, onGoToWeek }) {
+/* Drag and drop between shopping list sections, with pointer events so it works
+   with touch (HTML5 drag and drop doesn't on iPad/iPhone). Dragging starts from
+   a row's grip handle; the section under the finger lights up, and the page
+   scrolls when the finger nears the top or bottom edge. */
+const DRAG_EDGE = 90; // px from the top/bottom edge where the page starts scrolling
+
+function useSectionDrag(onDrop) {
+  const [drag, setDrag] = useState(null); // { id, label, from, over, x, y, offY, left, width }
+  const live = useRef(null);
+  const dropRef = useRef(onDrop);
+  dropRef.current = onDrop;
+
+  useEffect(() => {
+    if (!drag) return undefined;
+    let raf = 0;
+    const sectionAt = (x, y) => document.elementFromPoint(x, y)?.closest("[data-drop-section]")?.dataset.dropSection || null;
+    const tick = () => {
+      const d = live.current;
+      if (!d) return;
+      const bottom = window.innerHeight - DRAG_EDGE - 60; // clear of the tab bar
+      const dy = d.y < DRAG_EDGE ? -(DRAG_EDGE - d.y) / 6 : d.y > bottom ? (d.y - bottom) / 6 : 0;
+      if (dy) {
+        window.scrollBy(0, Math.max(-16, Math.min(16, dy)));
+        const over = sectionAt(d.x, d.y);
+        if (over !== d.over) setDrag((cur) => cur && { ...cur, over });
+      }
+      raf = requestAnimationFrame(tick);
+    };
+    const move = (e) => {
+      e.preventDefault();
+      const over = sectionAt(e.clientX, e.clientY);
+      setDrag((cur) => {
+        if (!cur) return cur;
+        const next = { ...cur, x: e.clientX, y: e.clientY, over };
+        live.current = next;
+        return next;
+      });
+    };
+    const end = (e) => {
+      const d = live.current;
+      if (e.type === "pointerup" && d?.over && d.over !== d.from) dropRef.current(d.id, d.over);
+      live.current = null;
+      setDrag(null);
+    };
+    window.addEventListener("pointermove", move, { passive: false });
+    window.addEventListener("pointerup", end);
+    window.addEventListener("pointercancel", end);
+    raf = requestAnimationFrame(tick);
+    return () => {
+      cancelAnimationFrame(raf);
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", end);
+      window.removeEventListener("pointercancel", end);
+    };
+  }, [!!drag]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  function start(e, id, label, from) {
+    if (e.button !== undefined && e.button !== 0) return;
+    e.preventDefault();
+    e.currentTarget.releasePointerCapture?.(e.pointerId); // let elementFromPoint see what's under the finger
+    const row = e.currentTarget.closest("[data-drag-row]").getBoundingClientRect();
+    const d = { id, label, from, over: from, x: e.clientX, y: e.clientY, offY: e.clientY - row.top, left: row.left, width: row.width };
+    live.current = d;
+    setDrag(d);
+  }
+
+  return { drag, start };
+}
+
+// The grip on each shopping row. Drag it to another section; with a keyboard,
+// the up and down arrows move the item one section at a time.
+function DragHandle({ label, section, onStart, onStep }) {
+  return (
+    <button
+      onPointerDown={onStart}
+      onKeyDown={(e) => {
+        const i = SECTIONS.indexOf(section) + (e.key === "ArrowUp" ? -1 : e.key === "ArrowDown" ? 1 : 0);
+        if (i !== SECTIONS.indexOf(section) && i >= 0 && i < SECTIONS.length) { e.preventDefault(); onStep(SECTIONS[i]); }
+      }}
+      aria-label={`Move ${label} to another section (drag, or use the up and down arrow keys)`}
+      className="w-9 h-11 flex items-center justify-center shrink-0 text-muted cursor-grab select-none"
+      style={{ touchAction: "none", WebkitTouchCallout: "none" }}
+    >
+      <GripVertical size={18} />
+    </button>
+  );
+}
+
+function ShoppingView({ lists, view, setView, pantry, setPantry, staples, setStaples, sectionMemory, onGoToWeek, onMoveIngredient }) {
   const pantrySet = useMemo(() => new Set(pantry), [pantry]);
   const { visible, rows, grouped, weeksFor, isChecked, isHave, manual, recipeCount } = combineLists(lists, view, pantrySet);
   const [showHave, setShowHave] = useState(false);
@@ -2378,6 +2461,19 @@ function ShoppingView({ lists, view, setView, pantry, setPantry, staples, setSta
   function removeManual(m) {
     m.list.setWeek((w) => ({ ...w, manual: (w.manual || []).filter((x) => x.id !== m.id) }));
   }
+
+  // Ids are "row:<key>" for recipe ingredients and "manual:<id>" for hand-added items.
+  function moveTo(id, section) {
+    const [kind, ref] = [id.slice(0, id.indexOf(":")), id.slice(id.indexOf(":") + 1)];
+    if (kind === "row") {
+      const row = rows.find((r) => r.key === ref);
+      if (row) onMoveIngredient(row.name, section);
+    } else {
+      const m = manual.find((x) => x.id === ref);
+      if (m) m.list.setWeek((w) => ({ ...w, manual: (w.manual || []).map((x) => (x.id === m.id ? { ...x, section } : x)) }));
+    }
+  }
+  const { drag, start: startDrag } = useSectionDrag(moveTo);
 
   const staplesPanel = (
     <StaplesPanel
@@ -2434,17 +2530,27 @@ function ShoppingView({ lists, view, setView, pantry, setPantry, staples, setSta
         {SECTIONS.map((sec) => {
           const items = (grouped[sec] || []).filter((r) => !isHave(r) && !(view.hideBought && isChecked(r)));
           const extra = manual.filter((m) => m.section === sec && !(view.hideBought && m.checked));
-          if (!items.length && !extra.length) return null;
+          // While dragging, empty sections show too so there's somewhere to drop.
+          if (!items.length && !extra.length && !drag) return null;
+          const target = drag && drag.over === sec && drag.from !== sec;
+          const dimmed = (id) => (drag && drag.id === id ? { opacity: 0.35 } : undefined);
           return (
-            <div key={sec}>
+            <div key={sec} data-drop-section={sec}>
               <h3 className={`inline-block ${SECTION_BG[sec]} border-2 border-ink rounded-full px-3 py-0.5 font-display text-sm font-semibold mb-2`}>
                 {SECTION_LABEL[sec]}
               </h3>
-              <div className="sticker overflow-hidden divide-y-2 divide-line">
+              <div className={`sticker overflow-hidden divide-y-2 divide-line ${target ? SECTION_BG[sec] : ""}`}
+                   style={target ? { outline: "3px dashed rgb(var(--ink))", outlineOffset: 3 } : undefined}>
+                {!items.length && !extra.length && (
+                  <div className="min-h-[52px] flex items-center justify-center text-xs font-extrabold text-muted">Drop here</div>
+                )}
                 {items.map((r) => {
                   const done = isChecked(r);
                   return (
-                    <div key={r.key} className="flex items-center min-h-[52px] pl-1 pr-1.5">
+                    <div key={r.key} data-drag-row className="flex items-center min-h-[52px] pl-1 pr-1.5" style={dimmed(`row:${r.key}`)}>
+                      <DragHandle label={r.name} section={sec}
+                                  onStart={(e) => startDrag(e, `row:${r.key}`, rowLabel(r), sec)}
+                                  onStep={(to) => moveTo(`row:${r.key}`, to)} />
                       <CheckBox on={done} onClick={() => toggleCheck(r)} label={`Check off ${r.name}`} />
                       <div className="flex-1 min-w-0 py-2">
                         <span className={`text-[15px] font-extrabold block ${done ? "line-through text-muted" : ""}`}>
@@ -2461,7 +2567,10 @@ function ShoppingView({ lists, view, setView, pantry, setPantry, staples, setSta
                   );
                 })}
                 {extra.map((m) => (
-                  <div key={m.id} className="flex items-center min-h-[52px] pl-1 pr-1.5">
+                  <div key={m.id} data-drag-row className="flex items-center min-h-[52px] pl-1 pr-1.5" style={dimmed(`manual:${m.id}`)}>
+                    <DragHandle label={m.name} section={sec}
+                                onStart={(e) => startDrag(e, `manual:${m.id}`, m.name, sec)}
+                                onStep={(to) => moveTo(`manual:${m.id}`, to)} />
                     <CheckBox on={m.checked} onClick={() => toggleManual(m)} label={`Check off ${m.name}`} />
                     <span className={`flex-1 min-w-0 text-[15px] font-extrabold ${m.checked ? "line-through text-muted" : ""}`}>{m.name}</span>
                     <button onClick={() => removeManual(m)} aria-label={`Remove ${m.name}`} className="w-11 h-11 flex items-center justify-center shrink-0 text-muted">
@@ -2474,6 +2583,14 @@ function ShoppingView({ lists, view, setView, pantry, setPantry, staples, setSta
           );
         })}
       </div>
+
+      {drag && (
+        <div className="fixed z-[70] pointer-events-none sticker flex items-center gap-2 min-h-[52px] px-3 text-[15px] font-extrabold shadow-sticker-lg"
+             style={{ left: drag.left, width: drag.width, top: drag.y - drag.offY, transform: "rotate(-1.5deg)" }}>
+          <GripVertical size={18} className="text-muted shrink-0" />
+          <span className="truncate">{drag.label}</span>
+        </div>
+      )}
 
       <div className="mt-5">
         <div className="flex gap-2">
@@ -2670,11 +2787,14 @@ function FridgeView({ items, now, onClear }) {
 
 /* ----------------------------------------------------------- library view */
 
-function LibraryView({ library, onAdd, onRemove, onUpdate, week, isNext, selectedIds, onToggleInWeek, onToggleTag, onAssignDinner, onCookNow, showShared, busy, setBusy, flash }) {
+function LibraryView({ library, onAdd, onRemove, onUpdate, week, isNext, selectedIds, onToggleInWeek, onToggleTag, onAssignDinner, onCookNow, householdName, showShared, busy, setBusy, flash }) {
   const [q, setQ] = useState("");
-  const [kind, setKind] = useState("all"); // "all" | "dinner" | "snack"
-  const [source, setSource] = useState("ours"); // "ours" | "others" (other households' shared libraries)
-  const viewingShared = showShared && source === "others";
+  // Kind filters: none on shows everything; each one narrows to that kind.
+  const [kinds, setKinds] = useState([]); // subset of ["dinner", "snack"]
+  // With "Show other households' libraries" on (Household panel), sharing households'
+  // recipes join ours; the Other households pill narrows the list to just theirs.
+  const [onlyOthers, setOnlyOthers] = useState(false);
+  const shared = useSharedLibraries(!!showShared);
   const [sheet, setSheet] = useState(null); // "url" | "manual"
   const [editing, setEditing] = useState(null); // snack being edited
   const [dayFor, setDayFor] = useState(null); // dinner waiting for a day
@@ -2684,14 +2804,40 @@ function LibraryView({ library, onAdd, onRemove, onUpdate, week, isNext, selecte
   const photoInput = useRef(null);
   const importing = busy === "import" || busy === "photo";
 
-  const matches = (s) => {
-    if (kind === "dinner" && !hasTag(s, DINNER_TAG)) return false;
-    if (kind === "snack" && hasTag(s, DINNER_TAG)) return false;
+  const toggleKind = (k) => setKinds((ks) => (ks.includes(k) ? ks.filter((x) => x !== k) : [...ks, k]));
+  // Search covers the title, vegetable, ingredients and the household the recipe came from.
+  const matches = (s, from) => {
+    const dinner = hasTag(s, DINNER_TAG);
+    if (kinds.length && !kinds.includes(dinner ? "dinner" : "snack")) return false;
     if (!q.trim()) return true;
-    const t = `${s.title} ${s.vegetable} ${(s.ingredients || []).map((i) => i.name).join(" ")}`.toLowerCase();
-    return t.includes(q.toLowerCase());
+    const t = `${s.title} ${s.vegetable} ${(s.ingredients || []).map((i) => i.name).join(" ")} ${from || ""}`.toLowerCase();
+    return t.includes(q.trim().toLowerCase());
   };
-  const filtered = library.filter(matches);
+  const filtered = showShared && onlyOthers ? []
+    : library.filter((s) => matches(s, s.copiedFrom ? s.copiedFrom.householdName : householdName));
+
+  // Other households' recipes. Mixed with ours, any we've already copied are left out
+  // (our copy is listed instead); on their own, they show as "In our library".
+  const copied = new Set(library.map((s) => s.copiedFrom && `${s.copiedFrom.householdId}:${s.copiedFrom.id}`).filter(Boolean));
+  const sharedRecipes = showShared && Array.isArray(shared)
+    ? shared.flatMap((h) => (h.recipes || [])
+        .map((s) => ({ h, s, copied: copied.has(`${h.household_id}:${s.id}`) }))
+        .filter(({ h, s, copied }) => (onlyOthers || !copied) && matches(s, h.household_name)))
+    : [];
+  const sharedLoading = showShared && shared === null;
+
+  function copyShared(h, s) {
+    const { cookTimes, ...rest } = s;
+    onAdd({
+      ...rest,
+      id: newId(),
+      source: "shared",
+      copiedFrom: { householdId: h.household_id, householdName: h.household_name, id: s.id },
+      prepMinutes: cookMinutes(s) || s.prepMinutes || null, // their time becomes our estimate
+      ratings: [],
+      lastMadeWeek: null,
+    });
+  }
 
   async function doImport() {
     const link = url.trim();
@@ -2737,8 +2883,8 @@ function LibraryView({ library, onAdd, onRemove, onUpdate, week, isNext, selecte
       <div className="flex gap-2 mb-3">
         <div className="flex-1 min-w-0 flex items-center gap-2 bg-white border-2 border-ink rounded-2xl px-3.5 min-h-[48px]">
           <Search size={18} className="text-muted shrink-0" />
-          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search recipes or vegetables"
-                 aria-label="Search recipes or vegetables"
+          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Recipe, veg or household"
+                 aria-label="Search recipes, vegetables or household"
                  className="flex-1 min-w-0 py-2.5 text-[15px] font-bold outline-none bg-transparent" />
           {q && <button onClick={() => setQ("")} aria-label="Clear search" className="w-8 h-8 flex items-center justify-center text-muted"><X size={16} /></button>}
         </div>
@@ -2748,30 +2894,22 @@ function LibraryView({ library, onAdd, onRemove, onUpdate, week, isNext, selecte
         </button>
       </div>
 
-      {showShared && (
-        <div className="flex gap-2 mb-2">
-          <Pill active={!viewingShared} onClick={() => setSource("ours")}>Ours</Pill>
-          <Pill active={viewingShared} onClick={() => setSource("others")}>Other households</Pill>
-        </div>
-      )}
-
-      <div className="flex gap-2 mb-4">
-        {[["all", "All"], ["dinner", TAG_LABEL[DINNER_TAG]], ["snack", "Snacks"]].map(([id, label]) => (
-          <Pill key={id} active={kind === id} onClick={() => setKind(id)}>{label}</Pill>
-        ))}
+      <div className="flex flex-wrap gap-2 mb-4">
+        <Pill compact active={kinds.includes("dinner")} onClick={() => toggleKind("dinner")}>Dinners</Pill>
+        <Pill compact active={kinds.includes("snack")} onClick={() => toggleKind("snack")}>Snacks</Pill>
+        {showShared && <Pill compact active={onlyOthers} onClick={() => setOnlyOthers((o) => !o)}>Other households</Pill>}
       </div>
 
-      {viewingShared && <SharedLibraries library={library} matches={matches} onCopy={onAdd} />}
-
-      {!viewingShared && <>
       {isNext && (
         <p className="mb-3 text-xs font-bold text-muted">
           Adding to next week. Switch back to this week on the Week tab.
         </p>
       )}
 
-      {!filtered.length && (
-        <Empty icon={BookMarked}>Nothing matches that. Try a vegetable name or switch the filter.</Empty>
+      {!filtered.length && !sharedRecipes.length && !sharedLoading && (
+        <Empty icon={BookMarked}>{library.length || (showShared && onlyOthers) || q.trim()
+          ? "Nothing matches that. Try a vegetable name or switch the filter."
+          : "No recipes yet. Add one above, from a link, a photo or by hand."}</Empty>
       )}
 
       <div className="space-y-3">
@@ -2788,8 +2926,19 @@ function LibraryView({ library, onAdd, onRemove, onUpdate, week, isNext, selecte
             onRemove={() => onRemove(s.id)}
           />
         ))}
+        {sharedRecipes.map(({ h, s, copied }) => (
+          <SharedRecipeCard key={`${h.household_id}:${s.id}`} snack={s} householdName={h.household_name}
+                            copied={copied} onCopy={() => copyShared(h, s)} />
+        ))}
       </div>
-      </>}
+
+      {sharedLoading && <div className="flex justify-center py-6"><Loader2 className="animate-spin text-muted" size={22} /></div>}
+      {showShared && shared === "failed" && (
+        <p className="mt-3 text-xs font-bold text-muted">Couldn't load other households' recipes. Try again in a bit.</p>
+      )}
+      {showShared && Array.isArray(shared) && !shared.length && (
+        <p className="mt-3 text-xs font-bold text-muted">No other household is sharing its library yet.</p>
+      )}
 
       <Sheet open={!!dayFor} onClose={() => setDayFor(null)} title={isNext ? "Which day next week?" : "Which day?"}>
         {dayFor && (
@@ -2877,68 +3026,25 @@ function LibraryView({ library, onAdd, onRemove, onUpdate, week, isNext, selecte
 /* Other households' libraries, read live each time this view opens. Recipes can
    only be copied: a copy is ours to edit, rate and time, and starts with no
    ratings or cook times of its own. */
-function SharedLibraries({ library, matches, onCopy }) {
-  const [shared, setShared] = useState(null); // [{ household_id, household_name, recipes }]
-  const [failed, setFailed] = useState(false);
-
+// Other households' shared libraries, fetched each time the toggle is turned on.
+// null while loading, "failed", or [{ household_id, household_name, recipes }].
+function useSharedLibraries(on) {
+  const [shared, setShared] = useState(null);
   useEffect(() => {
+    if (!on) return;
     let cancelled = false;
+    setShared(null);
     supabase.rpc("shared_libraries").then(({ data, error }) => {
       if (cancelled) return;
-      if (error) { console.error("shared_libraries failed", error); setFailed(true); return; }
+      if (error) { console.error("shared_libraries failed", error); setShared("failed"); return; }
       setShared(data || []);
     });
     return () => { cancelled = true; };
-  }, []);
-
-  if (failed) return <Empty icon={BookMarked}>Couldn't load other households' libraries. Try again in a bit.</Empty>;
-  if (!shared) {
-    return <div className="flex justify-center py-8"><Loader2 className="animate-spin text-muted" size={22} /></div>;
-  }
-  if (!shared.length) {
-    return <Empty icon={BookMarked}>No other household is sharing its library yet.</Empty>;
-  }
-
-  const copied = new Set(library.map((s) => s.copiedFrom && `${s.copiedFrom.householdId}:${s.copiedFrom.id}`).filter(Boolean));
-
-  function copy(h, s) {
-    const { cookTimes, ...rest } = s;
-    onCopy({
-      ...rest,
-      id: newId(),
-      source: "shared",
-      copiedFrom: { householdId: h.household_id, householdName: h.household_name, id: s.id },
-      prepMinutes: cookMinutes(s) || s.prepMinutes || null, // their time becomes our estimate
-      ratings: [],
-      lastMadeWeek: null,
-    });
-  }
-
-  const groups = shared
-    .map((h) => ({ ...h, recipes: (h.recipes || []).filter(matches) }))
-    .filter((h) => h.recipes.length);
-
-  if (!groups.length) return <Empty icon={BookMarked}>Nothing matches that. Try a vegetable name or switch the filter.</Empty>;
-
-  return (
-    <div className="space-y-5">
-      {groups.map((h) => (
-        <section key={h.household_id}>
-          <h2 className="font-display text-lg font-semibold mb-2">{h.household_name}</h2>
-          <div className="space-y-3">
-            {h.recipes.map((s) => (
-              <SharedRecipeCard key={s.id} snack={s}
-                                copied={copied.has(`${h.household_id}:${s.id}`)}
-                                onCopy={() => copy(h, s)} />
-            ))}
-          </div>
-        </section>
-      ))}
-    </div>
-  );
+  }, [on]);
+  return shared;
 }
 
-function SharedRecipeCard({ snack: s, copied, onCopy }) {
+function SharedRecipeCard({ snack: s, householdName, copied, onCopy }) {
   const [open, setOpen] = useState(false);
   const method = String(s.method || "").split("\n").map((l) => l.trim()).filter(Boolean);
 
@@ -2961,6 +3067,7 @@ function SharedRecipeCard({ snack: s, copied, onCopy }) {
             </>
           )}
         </div>
+        <p className="text-xs font-bold text-muted mt-1">From {householdName}</p>
       </button>
 
       {open && (
@@ -3035,6 +3142,7 @@ function LibraryCard({ snack: s, inWeek, isNext, onToggleInWeek, onToggleTag, on
           )}
         </div>
         <p className="text-xs font-bold text-muted mt-1">
+          {s.copiedFrom?.householdName && `From ${s.copiedFrom.householdName} · `}
           {s.lastMadeWeek ? `Made week of ${prettyWeek(s.lastMadeWeek)}` : "Not made yet"}
           {(s.ratings || []).length > 1 && ` · ${s.ratings.length} times`}
         </p>
@@ -3548,6 +3656,22 @@ function HouseholdToggle({ on, onClick, busy, disabled, title, children }) {
   );
 }
 
+// Whether the cooking screen keeps the display awake. This device only.
+function KeepAwakeToggle() {
+  const [on, setOn] = useState(loadAwake);
+  const toggle = () => { saveAwake(!on); setOn(!on); };
+  return (
+    <>
+      <h3 className="text-xs font-extrabold mt-5">This device</h3>
+      <HouseholdToggle on={on} onClick={toggle} title="Keep screen on while cooking">
+        {canWakeLock
+          ? "Stops the screen dimming or locking while the cooking screen is open."
+          : "This browser can't keep the screen on, so the screen will sleep as usual."}
+      </HouseholdToggle>
+    </>
+  );
+}
+
 // Colour theme for this device only. Applies instantly; see themes.js.
 function ThemePicker() {
   const [theme, setTheme] = useState(loadTheme);
@@ -3609,13 +3733,13 @@ function HouseholdPanel({ household, userId, onChange, onSignOut, flash }) {
     }
   }
 
+  async function toggleShowShared() {
+    if (await act("show", () => supabase.rpc("set_show_shared", { show: !household.show_shared }))) onChange();
+  }
+
   async function toggleShare() {
     const on = !household.share_library;
     if (await act("share", () => supabase.rpc("update_household", { share: on }))) onChange();
-  }
-
-  async function toggleShowShared() {
-    if (await act("show", () => supabase.rpc("set_show_shared", { show: !household.show_shared }))) onChange();
   }
 
   async function makeInvite() {
@@ -3696,9 +3820,10 @@ function HouseholdPanel({ household, userId, onChange, onSignOut, flash }) {
         Other households can see our recipes and cook times and copy them. Our ratings and plans stay private.
       </HouseholdToggle>
       <HouseholdToggle on={household.show_shared} onClick={toggleShowShared} busy={busy === "show"} disabled={!!busy} title="Show other households' libraries">
-        Adds an "Other households" view to the Library tab. Just for you.
+        Mixes recipes from households that share theirs into the Library tab, with an "Other households" filter. Just for you.
       </HouseholdToggle>
 
+      <KeepAwakeToggle />
       <ThemePicker />
 
       {error && (
