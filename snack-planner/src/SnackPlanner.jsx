@@ -18,6 +18,7 @@ const KEY_WEEK = "snackplan:week:v1";       // this week: suggestions, picks, pr
 const KEY_NEXT = "snackplan:nextweek:v1";   // next week's plan, made ahead; becomes "this week" on Monday
 const KEY_HAVE = "snackplan:pantry:v1";     // ingredients we always have at home
 const KEY_FRIDGE = "snackplan:fridge:v1";   // leftovers in the fridge, and the ones eaten or tossed
+const KEY_STAPLES = "snackplan:staples:v1"; // things bought often, added to the shopping list on demand
 
 async function loadKey(householdId, key, fallback) {
   try {
@@ -905,6 +906,7 @@ function SnackPlannerApp({ household, userId, onHouseholdChange, onSignOut }) {
   const [listView, setListView] = useState(loadListView); // shopping list filters, per device
   const [planWhich, setPlanWhich] = useState("this"); // which week the Week tab (and Library buttons) plan: "this" | "next"
   const [pantry, setPantry] = useState([]);
+  const [staples, setStaples] = useState([]); // { id, name, section }: regular buys, shared by the household
   const [fridge, setFridge] = useState(emptyFridge); // { items: leftovers in the fridge, gone: eaten/tossed }
   const [now, setNow] = useState(() => Date.now()); // ticks so fridge ages and colors stay current
   const [sectionMemory, setSectionMemory] = useState({}); // ingredient name -> section, learned from Claude
@@ -921,13 +923,14 @@ function SnackPlannerApp({ household, userId, onHouseholdChange, onSignOut }) {
     (async () => {
       if (!supabaseConfigured) setStorageOk(false);
       const hid = household.id;
-      const [core, storedLib, storedWeek, storedNext, have, storedFridge] = await Promise.all([
+      const [core, storedLib, storedWeek, storedNext, have, storedFridge, storedStaples] = await Promise.all([
         loadKey(hid, KEY_CORE, null),
         loadKey(hid, KEY_LIBRARY, null),
         loadKey(hid, KEY_WEEK, null),
         loadKey(hid, KEY_NEXT, null),
         loadKey(hid, KEY_HAVE, []),
         loadKey(hid, KEY_FRIDGE, null),
+        loadKey(hid, KEY_STAPLES, []),
       ]);
       if (cancelled) return;
 
@@ -964,6 +967,7 @@ function SnackPlannerApp({ household, userId, onHouseholdChange, onSignOut }) {
       setWeek(cur || emptyWeek(thisWeekId));
       setNextWeek(nxt);
       setPantry(Array.isArray(have) ? have : []);
+      setStaples(Array.isArray(storedStaples) ? storedStaples : []);
       setFridge({
         items: Array.isArray(storedFridge?.items) ? storedFridge.items : [],
         gone: Array.isArray(storedFridge?.gone) ? storedFridge.gone : [],
@@ -989,6 +993,7 @@ function SnackPlannerApp({ household, userId, onHouseholdChange, onSignOut }) {
   useEffect(() => { if (ready) saveKey(household.id, KEY_NEXT, nextWeek); }, [nextWeek, ready]);
   useEffect(() => { if (ready) saveKey(household.id, KEY_HAVE, pantry); }, [pantry, ready]);
   useEffect(() => { if (ready) saveKey(household.id, KEY_FRIDGE, fridge); }, [fridge, ready]);
+  useEffect(() => { if (ready) saveKey(household.id, KEY_STAPLES, staples); }, [staples, ready]);
 
   // Fridge ages are worked out from `now`; refresh it every few minutes and whenever
   // the app comes back to the foreground, so colors change without a reload.
@@ -1483,6 +1488,7 @@ function SnackPlannerApp({ household, userId, onHouseholdChange, onSignOut }) {
           <ShoppingView
             lists={shopLists} view={listView} setView={setListView}
             pantry={pantry} setPantry={setPantry}
+            staples={staples} setStaples={setStaples} sectionMemory={sectionMemory}
             onGoToWeek={(which) => { if (which === "this" || which === "next") setPlanWhich(which); setTab("week"); }}
           />
         )}
@@ -2137,9 +2143,11 @@ const KEY_LIST_VIEW = "snackplan:listview:v1";
 function loadListView() {
   try {
     const v = JSON.parse(localStorage.getItem(KEY_LIST_VIEW));
-    if (v && Array.isArray(v.show) && v.show.length) return { show: v.show, hideBought: !!v.hideBought };
+    if (v && Array.isArray(v.show) && v.show.length) {
+      return { show: v.show, hideBought: !!v.hideBought, staplesOpen: v.staplesOpen !== false };
+    }
   } catch {}
-  return { show: ["this", "next"], hideBought: false };
+  return { show: ["this", "next"], hideBought: false, staplesOpen: true };
 }
 
 function saveListView(v) {
@@ -2194,7 +2202,138 @@ async function copyList(lists, view, pantry, flash) {
   }
 }
 
-function ShoppingView({ lists, view, setView, pantry, setPantry, onGoToWeek }) {
+/* Staples: things the household buys often, kept in one shared list. Tapping "Add"
+   puts one on the shopping list as a hand-added item (in the earliest week shown);
+   a staple whose name is already a hand-added item shows "On list", and tapping that
+   takes it back off. One a visible recipe already needs shows "In recipes". */
+function StaplesPanel({ staples, setStaples, sectionMemory, visible, rows, isHave, manual, open, onToggleOpen }) {
+  const [draft, setDraft] = useState("");
+  const [note, setNote] = useState(null);
+
+  const manualNames = new Set(manual.map((m) => normName(m.name)));
+  const recipeNames = new Set(rows.filter((r) => !isHave(r)).map((r) => normName(r.name)));
+  const statusOf = (s) => {
+    const n = normName(s.name);
+    return manualNames.has(n) ? "added" : recipeNames.has(n) ? "recipe" : "off";
+  };
+  const sorted = [...staples].sort((a, b) =>
+    SECTIONS.indexOf(a.section) - SECTIONS.indexOf(b.section) || a.name.localeCompare(b.name));
+  const offList = sorted.filter((s) => statusOf(s) === "off");
+
+  const toItem = (s) => ({ id: newId(), name: s.name, section: s.section, checked: false, staple: s.id });
+  function addToList(items) {
+    if (!items.length || !visible.length) return;
+    visible[0].setWeek((w) => ({ ...w, manual: [...(w.manual || []), ...items.map(toItem)] }));
+  }
+  function takeOff(s) {
+    const n = normName(s.name);
+    for (const l of visible) {
+      if ((l.week.manual || []).some((m) => normName(m.name) === n)) {
+        l.setWeek((w) => ({ ...w, manual: (w.manual || []).filter((m) => normName(m.name) !== n) }));
+      }
+    }
+  }
+
+  function addStaple() {
+    const name = draft.trim().replace(/\s+/g, " ");
+    if (!name) return;
+    if (staples.some((s) => normName(s.name) === normName(name))) {
+      setNote(`${name} is already a staple.`);
+      return;
+    }
+    const section = sectionMemory[sectionKey(name)] || guessSection(name);
+    setStaples((list) => [...list, { id: newId(), name, section }]);
+    setDraft("");
+    setNote(null);
+  }
+  function cycleSection(s) {
+    const next = SECTIONS[(SECTIONS.indexOf(s.section) + 1) % SECTIONS.length];
+    setStaples((list) => list.map((x) => (x.id === s.id ? { ...x, section: next } : x)));
+  }
+  function removeStaple(s) {
+    setStaples((list) => list.filter((x) => x.id !== s.id));
+  }
+
+  return (
+    <div className="mt-6">
+      <div className="flex items-center justify-between gap-2">
+        <button onClick={onToggleOpen} aria-expanded={open}
+                className="min-h-[44px] flex items-center gap-1.5 font-display text-lg font-semibold px-1">
+          {open ? <ChevronDown size={18} /> : <ChevronRight size={18} />}
+          Staples
+          {staples.length > 0 && <span className="text-[13px] font-sans font-extrabold text-muted">({staples.length})</span>}
+        </button>
+        {open && offList.length > 0 && (
+          <button onClick={() => addToList(offList)} className="btn-plain shadow-sticker-sm text-sm shrink-0">
+            <Plus size={15} /> Add all ({offList.length})
+          </button>
+        )}
+      </div>
+
+      {open && (
+        <>
+          {staples.length === 0 ? (
+            <p className="px-1 mt-1 text-[13px] font-bold text-muted leading-relaxed">
+              Things you buy most weeks, like milk or bread. Save them here once, then put them on the list with a tap.
+            </p>
+          ) : (
+            <div className="sticker mt-1 overflow-hidden divide-y-2 divide-line">
+              {sorted.map((s) => {
+                const status = statusOf(s);
+                return (
+                  <div key={s.id} className="flex items-center min-h-[52px] pl-1.5 pr-1.5 gap-1">
+                    <button onClick={() => cycleSection(s)} className="min-h-[44px] px-1 shrink-0"
+                            aria-label={`${s.name} is in ${SECTION_LABEL[s.section]}. Change section`}>
+                      <span className={`${SECTION_BG[s.section]} border-2 border-ink rounded-full px-2 py-0.5 text-[11px] font-extrabold`}>
+                        {SECTION_LABEL[s.section]}
+                      </span>
+                    </button>
+                    <span className="flex-1 min-w-0 text-[15px] font-extrabold truncate">{s.name}</span>
+                    {status === "off" && (
+                      <button onClick={() => addToList([s])} aria-label={`Add ${s.name} to the list`}
+                              className="min-h-[44px] px-2.5 flex items-center gap-1 text-xs font-extrabold text-berry shrink-0">
+                        <Plus size={14} strokeWidth={3} /> Add
+                      </button>
+                    )}
+                    {status === "added" && (
+                      <button onClick={() => takeOff(s)} aria-label={`Take ${s.name} off the list`}
+                              className="min-h-[44px] px-2.5 flex items-center gap-1 text-xs font-extrabold text-muted shrink-0">
+                        <Check size={14} strokeWidth={3} /> On list
+                      </button>
+                    )}
+                    {status === "recipe" && (
+                      <span className="px-2.5 text-xs font-extrabold text-muted shrink-0">In recipes</span>
+                    )}
+                    <button onClick={() => removeStaple(s)} aria-label={`Remove ${s.name} from staples`}
+                            className="w-11 h-11 flex items-center justify-center shrink-0 text-muted">
+                      <Trash2 size={16} />
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+          <div className="flex gap-2 mt-3">
+            <input
+              value={draft}
+              onChange={(e) => { setDraft(e.target.value); setNote(null); }}
+              onKeyDown={(e) => { if (e.key === "Enter") addStaple(); }}
+              placeholder="Add a staple"
+              aria-label="Add a staple"
+              className="field flex-1 min-w-0"
+            />
+            <button onClick={addStaple} aria-label="Save staple" className="btn-plain w-12 px-0 shrink-0">
+              <Plus size={22} strokeWidth={2.6} />
+            </button>
+          </div>
+          {note && <p className="px-1 mt-1.5 text-[13px] font-bold text-muted">{note}</p>}
+        </>
+      )}
+    </div>
+  );
+}
+
+function ShoppingView({ lists, view, setView, pantry, setPantry, staples, setStaples, sectionMemory, onGoToWeek }) {
   const pantrySet = useMemo(() => new Set(pantry), [pantry]);
   const { visible, rows, grouped, weeksFor, isChecked, isHave, manual, recipeCount } = combineLists(lists, view, pantrySet);
   const [showHave, setShowHave] = useState(false);
@@ -2240,15 +2379,26 @@ function ShoppingView({ lists, view, setView, pantry, setPantry, onGoToWeek }) {
     m.list.setWeek((w) => ({ ...w, manual: (w.manual || []).filter((x) => x.id !== m.id) }));
   }
 
+  const staplesPanel = (
+    <StaplesPanel
+      staples={staples} setStaples={setStaples} sectionMemory={sectionMemory}
+      visible={visible} rows={rows} isHave={isHave} manual={manual}
+      open={view.staplesOpen} onToggleOpen={() => update({ ...view, staplesOpen: !view.staplesOpen })}
+    />
+  );
+
   if (!lists.some(hasListItems)) {
     return (
-      <Empty icon={ShoppingBasket} action={
-        <button onClick={onGoToWeek} className="btn-primary">
-          Plan a week
-        </button>
-      }>
-        Plan dinners or choose snacks on the Week tab, for this week or next, and the list builds itself, with repeat ingredients added up.
-      </Empty>
+      <>
+        <Empty icon={ShoppingBasket} action={
+          <button onClick={onGoToWeek} className="btn-primary">
+            Plan a week
+          </button>
+        }>
+          Plan dinners or choose snacks on the Week tab, for this week or next, and the list builds itself, with repeat ingredients added up.
+        </Empty>
+        <div className="px-5">{staplesPanel}</div>
+      </>
     );
   }
 
@@ -2351,6 +2501,8 @@ function ShoppingView({ lists, view, setView, pantry, setPantry, onGoToWeek }) {
           ))}
         </div>
       </div>
+
+      {staplesPanel}
 
       {haveRows.length > 0 && (
         <div className="mt-5">
